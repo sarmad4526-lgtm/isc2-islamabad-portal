@@ -1,14 +1,18 @@
 const path = require('path');
 const Database = require('better-sqlite3');
 
-const dbPath = path.resolve(__dirname, '../../portal.db');
+const isVercel = Boolean(process.env.VERCEL);
+const dbPath = isVercel ? path.join('/tmp', 'portal.db') : path.resolve(__dirname, '../../portal.db');
+
 const db = new Database(dbPath, {
     // verbose: console.log
 });
 
-// Enable Foreign Key support and WAL mode for high performance concurrency
+// Enable Foreign Key support and WAL mode for local high performance concurrency
 db.pragma('foreign_keys = ON');
-db.pragma('journal_mode = WAL');
+if (!isVercel) {
+    db.pragma('journal_mode = WAL');
+}
 
 function initDb() {
     // 1. Users table (Admins and Members)
