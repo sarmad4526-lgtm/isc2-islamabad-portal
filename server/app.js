@@ -53,7 +53,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Serve Static Frontend Assets (HTML, CSS, JS, Images)
-const publicDir = path.resolve(__dirname, '../');
+const publicDir = path.resolve(__dirname, '../public');
 app.use(express.static(publicDir));
 
 // Fallback to index.html for root or unknown HTML navigation
