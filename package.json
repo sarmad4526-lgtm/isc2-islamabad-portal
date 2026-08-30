@@ -1,0 +1,31 @@
+{
+  "name": "isc2-islamabad-portal",
+  "version": "1.0.0",
+  "description": "ISC2 Islamabad Chapter Member Portal & Management System",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "seed": "node server/seed/seeder.js"
+  },
+  "keywords": [
+    "isc2",
+    "islamabad",
+    "cybersecurity",
+    "member-portal",
+    "express"
+  ],
+  "author": "ISC2 Islamabad Chapter",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^13.0.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^6.10.0"
+  }
+}
