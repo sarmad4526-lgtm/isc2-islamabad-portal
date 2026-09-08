@@ -1,33 +1,32 @@
 /**
- * Dual-mode Database Layer
+ * Dual-mode Database Layer for Turso & Local SQLite
  * 
- * Uses PostgreSQL when POSTGRES_URL is set (Vercel production),
+ * Uses Turso (@libsql/client) when TURSO_DATABASE_URL or TURSO_URL is set (Vercel production),
  * otherwise falls back to local SQLite via better-sqlite3.
  * 
- * All exported functions are ASYNC for unified API across both backends.
+ * All exported functions are ASYNC for a unified API across both backends.
  */
 require('dotenv').config();
 const path = require('path');
 
 // ─── Detect environment ─────────────────────────────────────────────────
-const isPostgres = Boolean(process.env.POSTGRES_URL);
+const tursoUrl = process.env.TURSO_DATABASE_URL || process.env.TURSO_URL || (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('libsql') ? process.env.DATABASE_URL : null);
+const isTurso = Boolean(tursoUrl);
 
-// ─── Postgres setup ─────────────────────────────────────────────────────
-let pgPool = null;
+// ─── Turso setup ────────────────────────────────────────────────────────
+let tursoClient = null;
 
-function getPgPool() {
-    if (pgPool) return pgPool;
-    const { Pool } = require('pg');
-    pgPool = new Pool({
-        connectionString: process.env.POSTGRES_URL,
-        ssl: { rejectUnauthorized: false },
-        max: 10,
-        idleTimeoutMillis: 30000
+function getTursoClient() {
+    if (tursoClient) return tursoClient;
+    const { createClient } = require('@libsql/client');
+    tursoClient = createClient({
+        url: tursoUrl,
+        authToken: process.env.TURSO_AUTH_TOKEN
     });
-    return pgPool;
+    return tursoClient;
 }
 
-// ─── SQLite setup ───────────────────────────────────────────────────────
+// ─── Local SQLite setup ─────────────────────────────────────────────────
 let sqliteDb = null;
 
 function getSqliteDb() {
@@ -40,23 +39,32 @@ function getSqliteDb() {
     return sqliteDb;
 }
 
+// ─── Parameter Normalizer ───────────────────────────────────────────────
+/**
+ * Normalizes PostgreSQL $1, $2 positional placeholders to SQLite ? placeholders.
+ */
+function normalizeSql(sql) {
+    if (!sql) return sql;
+    return sql.replace(/\$\d+/g, '?');
+}
+
 // ─── Unified query interface ────────────────────────────────────────────
 
 /**
  * Execute a query and return all matching rows.
- * @param {string} sql - SQL query (use $1, $2... for Postgres, ? for SQLite)
+ * @param {string} sql - SQL query
  * @param {Array} params - Query parameters
  * @returns {Promise<Array>} Array of row objects
  */
 async function queryAll(sql, params = []) {
-    if (isPostgres) {
-        const pool = getPgPool();
-        const result = await pool.query(sql, params);
-        return result.rows;
+    const cleanSql = normalizeSql(sql);
+    if (isTurso) {
+        const client = getTursoClient();
+        const res = await client.execute({ sql: cleanSql, args: params });
+        return res.rows;
     } else {
         const db = getSqliteDb();
-        const pgSql = convertPgToSqlite(sql);
-        return db.prepare(pgSql).all(...params);
+        return db.prepare(cleanSql).all(...params);
     }
 }
 
@@ -67,14 +75,14 @@ async function queryAll(sql, params = []) {
  * @returns {Promise<Object|undefined>} Single row or undefined
  */
 async function queryOne(sql, params = []) {
-    if (isPostgres) {
-        const pool = getPgPool();
-        const result = await pool.query(sql, params);
-        return result.rows[0] || undefined;
+    const cleanSql = normalizeSql(sql);
+    if (isTurso) {
+        const client = getTursoClient();
+        const res = await client.execute({ sql: cleanSql, args: params });
+        return res.rows[0] || undefined;
     } else {
         const db = getSqliteDb();
-        const pgSql = convertPgToSqlite(sql);
-        return db.prepare(pgSql).get(...params);
+        return db.prepare(cleanSql).get(...params) || undefined;
     }
 }
 
@@ -82,22 +90,21 @@ async function queryOne(sql, params = []) {
  * Execute an INSERT/UPDATE/DELETE and return result info.
  * @param {string} sql - SQL statement
  * @param {Array} params - Query parameters
- * @returns {Promise<{rowCount: number, lastId: number|null}>}
+ * @returns {Promise<{rowCount: number, lastId: number|null, rows: Array}>}
  */
 async function execute(sql, params = []) {
-    if (isPostgres) {
-        const pool = getPgPool();
-        const result = await pool.query(sql, params);
-        // For INSERT with RETURNING, provide the returned rows
+    const cleanSql = normalizeSql(sql);
+    if (isTurso) {
+        const client = getTursoClient();
+        const res = await client.execute({ sql: cleanSql, args: params });
         return {
-            rowCount: result.rowCount,
-            lastId: result.rows && result.rows[0] ? result.rows[0].id : null,
-            rows: result.rows || []
+            rowCount: res.rowsAffected,
+            lastId: res.lastInsertRowid !== undefined && res.lastInsertRowid !== null ? Number(res.lastInsertRowid) : null,
+            rows: res.rows || []
         };
     } else {
         const db = getSqliteDb();
-        const pgSql = convertPgToSqlite(sql);
-        const info = db.prepare(pgSql).run(...params);
+        const info = db.prepare(cleanSql).run(...params);
         return {
             rowCount: info.changes,
             lastId: info.lastInsertRowid || null,
@@ -108,91 +115,54 @@ async function execute(sql, params = []) {
 
 /**
  * Execute multiple statements within a transaction.
- * @param {Function} fn - async function(client) that receives a query client
+ * @param {Function} fn - async function(txHelper) that receives a query client
  */
 async function transaction(fn) {
-    if (isPostgres) {
-        const pool = getPgPool();
-        const client = await pool.connect();
+    if (isTurso) {
+        const client = getTursoClient();
+        const tx = await client.transaction('write');
+        const txHelper = {
+            queryAll: async (sql, params = []) => {
+                const res = await tx.execute({ sql: normalizeSql(sql), args: params });
+                return res.rows;
+            },
+            queryOne: async (sql, params = []) => {
+                const res = await tx.execute({ sql: normalizeSql(sql), args: params });
+                return res.rows[0] || undefined;
+            },
+            execute: async (sql, params = []) => {
+                const res = await tx.execute({ sql: normalizeSql(sql), args: params });
+                return {
+                    rowCount: res.rowsAffected,
+                    lastId: res.lastInsertRowid !== undefined && res.lastInsertRowid !== null ? Number(res.lastInsertRowid) : null,
+                    rows: res.rows || []
+                };
+            }
+        };
         try {
-            await client.query('BEGIN');
-            const txHelper = {
-                queryAll: async (sql, params = []) => {
-                    const result = await client.query(sql, params);
-                    return result.rows;
-                },
-                queryOne: async (sql, params = []) => {
-                    const result = await client.query(sql, params);
-                    return result.rows[0] || undefined;
-                },
-                execute: async (sql, params = []) => {
-                    const result = await client.query(sql, params);
-                    return {
-                        rowCount: result.rowCount,
-                        lastId: result.rows && result.rows[0] ? result.rows[0].id : null,
-                        rows: result.rows || []
-                    };
-                }
-            };
             await fn(txHelper);
-            await client.query('COMMIT');
+            await tx.commit();
         } catch (err) {
-            await client.query('ROLLBACK');
+            await tx.rollback();
             throw err;
         } finally {
-            client.release();
+            tx.close();
         }
     } else {
         const db = getSqliteDb();
-        const sqliteTx = db.transaction(() => {});
-        // For SQLite, we run synchronously inside a transaction wrapper
-        const txHelper = {
-            queryAll: async (sql, params = []) => {
-                const pgSql = convertPgToSqlite(sql);
-                return db.prepare(pgSql).all(...params);
-            },
-            queryOne: async (sql, params = []) => {
-                const pgSql = convertPgToSqlite(sql);
-                return db.prepare(pgSql).get(...params) || undefined;
-            },
-            execute: async (sql, params = []) => {
-                const pgSql = convertPgToSqlite(sql);
-                const info = db.prepare(pgSql).run(...params);
-                return {
-                    rowCount: info.changes,
-                    lastId: info.lastInsertRowid || null,
-                    rows: []
-                };
-            }
-        };
-        // Wrap in SQLite transaction
-        const wrappedFn = db.transaction(async () => {
-            await fn(txHelper);
-        });
-        // SQLite transactions are synchronous, but our fn is async.
-        // We need to run the async body synchronously for SQLite.
-        // Re-implement with sync calls:
-        const syncTxHelper = {
-            queryAll: async (sql, params = []) => {
-                const pgSql = convertPgToSqlite(sql);
-                return db.prepare(pgSql).all(...params);
-            },
-            queryOne: async (sql, params = []) => {
-                const pgSql = convertPgToSqlite(sql);
-                return db.prepare(pgSql).get(...params) || undefined;
-            },
-            execute: async (sql, params = []) => {
-                const pgSql = convertPgToSqlite(sql);
-                const info = db.prepare(pgSql).run(...params);
-                return {
-                    rowCount: info.changes,
-                    lastId: info.lastInsertRowid || null,
-                    rows: []
-                };
-            }
-        };
-        // For SQLite: begin/commit manually
         db.exec('BEGIN');
+        const syncTxHelper = {
+            queryAll: async (sql, params = []) => db.prepare(normalizeSql(sql)).all(...params),
+            queryOne: async (sql, params = []) => db.prepare(normalizeSql(sql)).get(...params) || undefined,
+            execute: async (sql, params = []) => {
+                const info = db.prepare(normalizeSql(sql)).run(...params);
+                return {
+                    rowCount: info.changes,
+                    lastId: info.lastInsertRowid || null,
+                    rows: []
+                };
+            }
+        };
         try {
             await fn(syncTxHelper);
             db.exec('COMMIT');
@@ -206,31 +176,28 @@ async function transaction(fn) {
 // ─── Schema initialization ──────────────────────────────────────────────
 
 async function initDb() {
-    if (isPostgres) {
-        await initPostgresSchema();
+    if (isTurso) {
+        await initTursoSchema();
     } else {
         initSqliteSchema();
     }
-    console.log('✓ Database schema initialized successfully');
+    console.log(`✓ Database schema initialized successfully (${isTurso ? 'Turso' : 'Local SQLite'})`);
 }
 
-async function initPostgresSchema() {
-    const pool = getPgPool();
+async function initTursoSchema() {
+    const client = getTursoClient();
 
-    await pool.query(`
-        CREATE TABLE IF NOT EXISTS users (
-            id SERIAL PRIMARY KEY,
+    const statements = [
+        `CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             email TEXT UNIQUE NOT NULL,
             isc2_number TEXT UNIQUE,
             password_hash TEXT NOT NULL,
             role TEXT DEFAULT 'MEMBER' CHECK(role IN ('ADMIN', 'MEMBER')),
-            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-        )
-    `);
-
-    await pool.query(`
-        CREATE TABLE IF NOT EXISTS members (
-            id SERIAL PRIMARY KEY,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`,
+        `CREATE TABLE IF NOT EXISTS members (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             member_id TEXT UNIQUE NOT NULL,
             name TEXT NOT NULL,
             email TEXT UNIQUE NOT NULL,
@@ -246,27 +213,21 @@ async function initPostgresSchema() {
             working_groups TEXT DEFAULT '[]',
             term_start_date TEXT NOT NULL,
             term_end_date TEXT NOT NULL,
-            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-        )
-    `);
-
-    await pool.query(`
-        CREATE TABLE IF NOT EXISTS membership_history (
-            id SERIAL PRIMARY KEY,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`,
+        `CREATE TABLE IF NOT EXISTS membership_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             member_id TEXT NOT NULL,
             period_number INTEGER NOT NULL,
             start_date TEXT NOT NULL,
             end_date TEXT NOT NULL,
             status TEXT NOT NULL CHECK(status IN ('Active', 'Expired')),
-            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (member_id) REFERENCES members(member_id) ON DELETE CASCADE
-        )
-    `);
-
-    await pool.query(`
-        CREATE TABLE IF NOT EXISTS applications (
-            id SERIAL PRIMARY KEY,
+        )`,
+        `CREATE TABLE IF NOT EXISTS applications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             request_id TEXT UNIQUE NOT NULL,
             isc2_number TEXT NOT NULL,
             name TEXT NOT NULL,
@@ -281,25 +242,24 @@ async function initPostgresSchema() {
             working_groups TEXT DEFAULT '[]',
             status TEXT DEFAULT 'Pending' CHECK(status IN ('Pending', 'Approved', 'Rejected')),
             date TEXT NOT NULL,
-            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-        )
-    `);
-
-    await pool.query(`
-        CREATE TABLE IF NOT EXISTS email_logs (
-            id SERIAL PRIMARY KEY,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`,
+        `CREATE TABLE IF NOT EXISTS email_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             subject TEXT NOT NULL,
             message TEXT NOT NULL,
             recipient_count INTEGER NOT NULL,
             sent_by TEXT,
-            sent_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-        )
-    `);
+            sent_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_members_term_end ON members(term_end_date)`,
+        `CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status)`,
+        `CREATE INDEX IF NOT EXISTS idx_history_member_id ON membership_history(member_id)`
+    ];
 
-    // Create indices (IF NOT EXISTS for idempotency)
-    await pool.query(`CREATE INDEX IF NOT EXISTS idx_members_term_end ON members(term_end_date)`);
-    await pool.query(`CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status)`);
-    await pool.query(`CREATE INDEX IF NOT EXISTS idx_history_member_id ON membership_history(member_id)`);
+    for (const sql of statements) {
+        await client.execute(sql);
+    }
 }
 
 function initSqliteSchema() {
@@ -313,10 +273,8 @@ function initSqliteSchema() {
             password_hash TEXT NOT NULL,
             role TEXT DEFAULT 'MEMBER' CHECK(role IN ('ADMIN', 'MEMBER')),
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    `);
+        );
 
-    db.exec(`
         CREATE TABLE IF NOT EXISTS members (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             member_id TEXT UNIQUE NOT NULL,
@@ -336,10 +294,8 @@ function initSqliteSchema() {
             term_end_date TEXT NOT NULL,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    `);
+        );
 
-    db.exec(`
         CREATE TABLE IF NOT EXISTS membership_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             member_id TEXT NOT NULL,
@@ -349,10 +305,8 @@ function initSqliteSchema() {
             status TEXT NOT NULL CHECK(status IN ('Active', 'Expired')),
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (member_id) REFERENCES members(member_id) ON DELETE CASCADE
-        )
-    `);
+        );
 
-    db.exec(`
         CREATE TABLE IF NOT EXISTS applications (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             request_id TEXT UNIQUE NOT NULL,
@@ -370,10 +324,8 @@ function initSqliteSchema() {
             status TEXT DEFAULT 'Pending' CHECK(status IN ('Pending', 'Approved', 'Rejected')),
             date TEXT NOT NULL,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    `);
+        );
 
-    db.exec(`
         CREATE TABLE IF NOT EXISTS email_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             subject TEXT NOT NULL,
@@ -381,10 +333,8 @@ function initSqliteSchema() {
             recipient_count INTEGER NOT NULL,
             sent_by TEXT,
             sent_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    `);
+        );
 
-    db.exec(`
         CREATE INDEX IF NOT EXISTS idx_members_term_end ON members(term_end_date);
         CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status);
         CREATE INDEX IF NOT EXISTS idx_history_member_id ON membership_history(member_id);
@@ -408,25 +358,6 @@ function initSqliteSchema() {
     } catch (e) {
         console.error('Migration error:', e);
     }
-}
-
-// ─── SQL dialect conversion ─────────────────────────────────────────────
-
-/**
- * Converts Postgres-style $1, $2 placeholders to SQLite ? placeholders.
- * Also handles minor syntax differences.
- */
-function convertPgToSqlite(sql) {
-    // Replace $1, $2, etc. with ?
-    let converted = sql.replace(/\$\d+/g, '?');
-    // Convert Postgres ON CONFLICT DO NOTHING to SQLite INSERT OR IGNORE
-    if (/ON\s+CONFLICT\s+DO\s+NOTHING/i.test(converted)) {
-        converted = converted.replace(/\s+ON\s+CONFLICT\s+DO\s+NOTHING/i, '');
-        converted = converted.replace(/INSERT\s+INTO/i, 'INSERT OR IGNORE INTO');
-    }
-    // Handle RETURNING clause - strip it for SQLite
-    converted = converted.replace(/\s+RETURNING\s+.*/i, '');
-    return converted;
 }
 
 // ─── Helper functions ───────────────────────────────────────────────────
@@ -482,5 +413,5 @@ module.exports = {
     getTodayString,
     calculateEndDate,
     getMemberStatus,
-    isPostgres
+    isTurso
 };
