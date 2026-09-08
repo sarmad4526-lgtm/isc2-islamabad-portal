@@ -56,8 +56,15 @@ app.get('/api/health', (req, res) => {
 const publicDir = path.resolve(__dirname, '../public');
 app.use(express.static(publicDir));
 
-// Fallback to index.html for root or unknown HTML navigation
-app.get('/', (req, res) => {
+// Clean page routes
+app.get('/admin', (req, res) => res.sendFile(path.join(publicDir, 'admin.html')));
+app.get('/login', (req, res) => res.sendFile(path.join(publicDir, 'login.html')));
+app.get('/membership', (req, res) => res.sendFile(path.join(publicDir, 'membership.html')));
+app.get('/events', (req, res) => res.sendFile(path.join(publicDir, 'events.html')));
+app.get('/leadership', (req, res) => res.sendFile(path.join(publicDir, 'leadership.html')));
+
+// Fallback to index.html for root or SPA navigation
+app.get('*', (req, res) => {
     res.sendFile(path.join(publicDir, 'index.html'));
 });
 
