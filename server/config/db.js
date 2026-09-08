@@ -1,17 +1,20 @@
 /**
- * Dual-mode Database Layer for Turso & Local SQLite
+ * Multi-mode Database Layer for Turso, PostgreSQL & Local SQLite
  * 
- * Uses Turso (@libsql/client) when TURSO_DATABASE_URL or TURSO_URL is set (Vercel production),
- * otherwise falls back to local SQLite via better-sqlite3.
+ * Mode 1: Turso (@libsql/client) when TURSO_DATABASE_URL or TURSO_URL is set
+ * Mode 2: PostgreSQL (pg) when POSTGRES_URL or DATABASE_URL is set
+ * Mode 3: Local SQLite (better-sqlite3) fallback for local development
  * 
- * All exported functions are ASYNC for a unified API across both backends.
+ * All exported functions are ASYNC for a unified API across all backends.
  */
 require('dotenv').config();
 const path = require('path');
 
 // ─── Detect environment ─────────────────────────────────────────────────
-const tursoUrl = process.env.TURSO_DATABASE_URL || process.env.TURSO_URL || (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('libsql') ? process.env.DATABASE_URL : null);
+const tursoUrl = process.env.TURSO_DATABASE_URL || process.env.TURSO_URL;
 const isTurso = Boolean(tursoUrl);
+const pgUrl = !isTurso ? (process.env.POSTGRES_URL || process.env.DATABASE_URL) : null;
+const isPostgres = Boolean(pgUrl);
 
 // ─── Turso setup ────────────────────────────────────────────────────────
 let tursoClient = null;
@@ -24,6 +27,21 @@ function getTursoClient() {
         authToken: process.env.TURSO_AUTH_TOKEN
     });
     return tursoClient;
+}
+
+// ─── Postgres setup ─────────────────────────────────────────────────────
+let pgPool = null;
+
+function getPgPool() {
+    if (pgPool) return pgPool;
+    const { Pool } = require('pg');
+    pgPool = new Pool({
+        connectionString: pgUrl,
+        ssl: pgUrl.includes('localhost') ? false : { rejectUnauthorized: false },
+        max: 10,
+        idleTimeoutMillis: 30000
+    });
+    return pgPool;
 }
 
 // ─── Local SQLite setup ─────────────────────────────────────────────────
@@ -39,28 +57,47 @@ function getSqliteDb() {
     return sqliteDb;
 }
 
-// ─── Parameter Normalizer ───────────────────────────────────────────────
-/**
- * Normalizes PostgreSQL $1, $2 positional placeholders to SQLite ? placeholders.
- */
+// ─── Parameter & Syntax Normalizer ──────────────────────────────────────
 function normalizeSql(sql) {
     if (!sql) return sql;
-    return sql.replace(/\$\d+/g, '?');
+    let clean = sql;
+
+    if (isPostgres) {
+        // Keep $1, $2 for Postgres
+        // Convert INSERT OR IGNORE -> ON CONFLICT DO NOTHING
+        if (/INSERT\s+OR\s+IGNORE\s+INTO/i.test(clean)) {
+            clean = clean.replace(/INSERT\s+OR\s+IGNORE\s+INTO/i, 'INSERT INTO');
+            if (!/ON\s+CONFLICT/i.test(clean)) {
+                clean += ' ON CONFLICT DO NOTHING';
+            }
+        }
+        return clean;
+    } else {
+        // Convert $1, $2 -> ? for SQLite / Turso
+        clean = clean.replace(/\$\d+/g, '?');
+        if (/ON\s+CONFLICT\s+DO\s+NOTHING/i.test(clean)) {
+            clean = clean.replace(/\s+ON\s+CONFLICT\s+DO\s+NOTHING/i, '');
+            if (!/INSERT\s+OR\s+IGNORE/i.test(clean)) {
+                clean = clean.replace(/INSERT\s+INTO/i, 'INSERT OR IGNORE INTO');
+            }
+        }
+        // Strip RETURNING clause for SQLite / Turso if present
+        clean = clean.replace(/\s+RETURNING\s+.*/i, '');
+        return clean;
+    }
 }
 
 // ─── Unified query interface ────────────────────────────────────────────
 
-/**
- * Execute a query and return all matching rows.
- * @param {string} sql - SQL query
- * @param {Array} params - Query parameters
- * @returns {Promise<Array>} Array of row objects
- */
 async function queryAll(sql, params = []) {
     const cleanSql = normalizeSql(sql);
     if (isTurso) {
         const client = getTursoClient();
         const res = await client.execute({ sql: cleanSql, args: params });
+        return res.rows;
+    } else if (isPostgres) {
+        const pool = getPgPool();
+        const res = await pool.query(cleanSql, params);
         return res.rows;
     } else {
         const db = getSqliteDb();
@@ -68,17 +105,15 @@ async function queryAll(sql, params = []) {
     }
 }
 
-/**
- * Execute a query and return the first matching row.
- * @param {string} sql - SQL query
- * @param {Array} params - Query parameters
- * @returns {Promise<Object|undefined>} Single row or undefined
- */
 async function queryOne(sql, params = []) {
     const cleanSql = normalizeSql(sql);
     if (isTurso) {
         const client = getTursoClient();
         const res = await client.execute({ sql: cleanSql, args: params });
+        return res.rows[0] || undefined;
+    } else if (isPostgres) {
+        const pool = getPgPool();
+        const res = await pool.query(cleanSql, params);
         return res.rows[0] || undefined;
     } else {
         const db = getSqliteDb();
@@ -86,12 +121,6 @@ async function queryOne(sql, params = []) {
     }
 }
 
-/**
- * Execute an INSERT/UPDATE/DELETE and return result info.
- * @param {string} sql - SQL statement
- * @param {Array} params - Query parameters
- * @returns {Promise<{rowCount: number, lastId: number|null, rows: Array}>}
- */
 async function execute(sql, params = []) {
     const cleanSql = normalizeSql(sql);
     if (isTurso) {
@@ -100,6 +129,14 @@ async function execute(sql, params = []) {
         return {
             rowCount: res.rowsAffected,
             lastId: res.lastInsertRowid !== undefined && res.lastInsertRowid !== null ? Number(res.lastInsertRowid) : null,
+            rows: res.rows || []
+        };
+    } else if (isPostgres) {
+        const pool = getPgPool();
+        const res = await pool.query(cleanSql, params);
+        return {
+            rowCount: res.rowCount,
+            lastId: res.rows && res.rows[0] ? res.rows[0].id : null,
             rows: res.rows || []
         };
     } else {
@@ -113,10 +150,6 @@ async function execute(sql, params = []) {
     }
 }
 
-/**
- * Execute multiple statements within a transaction.
- * @param {Function} fn - async function(txHelper) that receives a query client
- */
 async function transaction(fn) {
     if (isTurso) {
         const client = getTursoClient();
@@ -148,6 +181,37 @@ async function transaction(fn) {
         } finally {
             tx.close();
         }
+    } else if (isPostgres) {
+        const pool = getPgPool();
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            const txHelper = {
+                queryAll: async (sql, params = []) => {
+                    const res = await client.query(normalizeSql(sql), params);
+                    return res.rows;
+                },
+                queryOne: async (sql, params = []) => {
+                    const res = await client.query(normalizeSql(sql), params);
+                    return res.rows[0] || undefined;
+                },
+                execute: async (sql, params = []) => {
+                    const res = await client.query(normalizeSql(sql), params);
+                    return {
+                        rowCount: res.rowCount,
+                        lastId: res.rows && res.rows[0] ? res.rows[0].id : null,
+                        rows: res.rows || []
+                    };
+                }
+            };
+            await fn(txHelper);
+            await client.query('COMMIT');
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
     } else {
         const db = getSqliteDb();
         db.exec('BEGIN');
@@ -178,10 +242,13 @@ async function transaction(fn) {
 async function initDb() {
     if (isTurso) {
         await initTursoSchema();
+    } else if (isPostgres) {
+        await initPostgresSchema();
     } else {
         initSqliteSchema();
     }
-    console.log(`✓ Database schema initialized successfully (${isTurso ? 'Turso' : 'Local SQLite'})`);
+    const modeName = isTurso ? 'Turso' : isPostgres ? 'PostgreSQL' : 'Local SQLite';
+    console.log(`✓ Database schema initialized successfully (${modeName})`);
 }
 
 async function initTursoSchema() {
@@ -262,6 +329,93 @@ async function initTursoSchema() {
     }
 }
 
+async function initPostgresSchema() {
+    const pool = getPgPool();
+
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            email TEXT UNIQUE NOT NULL,
+            isc2_number TEXT UNIQUE,
+            password_hash TEXT NOT NULL,
+            role TEXT DEFAULT 'MEMBER' CHECK(role IN ('ADMIN', 'MEMBER')),
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS members (
+            id SERIAL PRIMARY KEY,
+            member_id TEXT UNIQUE NOT NULL,
+            name TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            chapter TEXT DEFAULT 'Pakistan Islamabad Chapter',
+            role TEXT DEFAULT 'Member',
+            company TEXT,
+            job_title TEXT,
+            specialisation TEXT,
+            industry TEXT,
+            country TEXT,
+            city TEXT,
+            certifications TEXT DEFAULT '[]',
+            working_groups TEXT DEFAULT '[]',
+            term_start_date TEXT NOT NULL,
+            term_end_date TEXT NOT NULL,
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS membership_history (
+            id SERIAL PRIMARY KEY,
+            member_id TEXT NOT NULL,
+            period_number INTEGER NOT NULL,
+            start_date TEXT NOT NULL,
+            end_date TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('Active', 'Expired')),
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (member_id) REFERENCES members(member_id) ON DELETE CASCADE
+        )
+    `);
+
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS applications (
+            id SERIAL PRIMARY KEY,
+            request_id TEXT UNIQUE NOT NULL,
+            isc2_number TEXT NOT NULL,
+            name TEXT NOT NULL,
+            email TEXT NOT NULL,
+            company TEXT,
+            job_title TEXT,
+            specialisation TEXT,
+            industry TEXT,
+            country TEXT,
+            city TEXT,
+            certifications TEXT DEFAULT '[]',
+            working_groups TEXT DEFAULT '[]',
+            status TEXT DEFAULT 'Pending' CHECK(status IN ('Pending', 'Approved', 'Rejected')),
+            date TEXT NOT NULL,
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS email_logs (
+            id SERIAL PRIMARY KEY,
+            subject TEXT NOT NULL,
+            message TEXT NOT NULL,
+            recipient_count INTEGER NOT NULL,
+            sent_by TEXT,
+            sent_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_members_term_end ON members(term_end_date)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_history_member_id ON membership_history(member_id)`);
+}
+
 function initSqliteSchema() {
     const db = getSqliteDb();
 
@@ -339,25 +493,6 @@ function initSqliteSchema() {
         CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status);
         CREATE INDEX IF NOT EXISTS idx_history_member_id ON membership_history(member_id);
     `);
-
-    // Automatic migration: Add country and city columns if they don't exist
-    try {
-        const membersInfo = db.prepare("PRAGMA table_info(members)").all();
-        if (!membersInfo.some(col => col.name === 'country')) {
-            db.exec("ALTER TABLE members ADD COLUMN country TEXT");
-            db.exec("ALTER TABLE members ADD COLUMN city TEXT");
-            console.log('✓ Migrated members table: added country & city columns');
-        }
-
-        const appsInfo = db.prepare("PRAGMA table_info(applications)").all();
-        if (!appsInfo.some(col => col.name === 'country')) {
-            db.exec("ALTER TABLE applications ADD COLUMN country TEXT");
-            db.exec("ALTER TABLE applications ADD COLUMN city TEXT");
-            console.log('✓ Migrated applications table: added country & city columns');
-        }
-    } catch (e) {
-        console.error('Migration error:', e);
-    }
 }
 
 // ─── Helper functions ───────────────────────────────────────────────────
@@ -413,5 +548,6 @@ module.exports = {
     getTodayString,
     calculateEndDate,
     getMemberStatus,
-    isTurso
+    isTurso,
+    isPostgres
 };
