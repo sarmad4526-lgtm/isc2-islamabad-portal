@@ -53,12 +53,17 @@ function getSqliteDb() {
     if (isVercel) {
         throw new Error('Local SQLite (better-sqlite3) cannot be used in read-only Vercel Serverless environment. Please ensure TURSO_DATABASE_URL or POSTGRES_URL is configured in Vercel Environment Variables.');
     }
-    const Database = require('better-sqlite3');
-    const dbPath = path.resolve(__dirname, '../../portal.db');
-    sqliteDb = new Database(dbPath);
-    sqliteDb.pragma('foreign_keys = ON');
-    sqliteDb.pragma('journal_mode = WAL');
-    return sqliteDb;
+    try {
+        const Database = require('better-sqlite3');
+        const dbPath = path.resolve(__dirname, '../../portal.db');
+        sqliteDb = new Database(dbPath);
+        sqliteDb.pragma('foreign_keys = ON');
+        sqliteDb.pragma('journal_mode = WAL');
+        return sqliteDb;
+    } catch (err) {
+        console.error('better-sqlite3 not available:', err.message);
+        throw err;
+    }
 }
 
 // ─── Parameter & Syntax Normalizer ──────────────────────────────────────
