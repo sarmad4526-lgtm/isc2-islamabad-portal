@@ -2,14 +2,14 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { db } = require('../config/db');
+const { queryOne } = require('../config/db');
 const { authenticateToken, JWT_SECRET } = require('../middleware/auth');
 
 /**
  * POST /api/auth/login
  * Sign in via Email or numeric ISC2 Member ID
  */
-router.post('/login', (req, res, next) => {
+router.post('/login', async (req, res, next) => {
     try {
         const { identifier, password } = req.body;
 
@@ -23,9 +23,9 @@ router.post('/login', (req, res, next) => {
         // Find user by email or by ISC2 Member ID
         let user;
         if (isNumeric) {
-            user = db.prepare('SELECT * FROM users WHERE isc2_number = ? OR email = ?').get(cleanIdentifier, cleanIdentifier);
+            user = await queryOne('SELECT * FROM users WHERE isc2_number = $1 OR email = $2', [cleanIdentifier, cleanIdentifier]);
         } else {
-            user = db.prepare('SELECT * FROM users WHERE email = ?').get(cleanIdentifier.toLowerCase());
+            user = await queryOne('SELECT * FROM users WHERE email = $1', [cleanIdentifier.toLowerCase()]);
         }
 
         if (!user) {
@@ -53,7 +53,7 @@ router.post('/login', (req, res, next) => {
         });
 
         // Also fetch member profile if available
-        const member = db.prepare('SELECT * FROM members WHERE email = ? OR member_id = ?').get(user.email, user.isc2_number);
+        const member = await queryOne('SELECT * FROM members WHERE email = $1 OR member_id = $2', [user.email, user.isc2_number]);
 
         return res.json({
             success: true,
@@ -83,8 +83,8 @@ router.post('/logout', (req, res) => {
 /**
  * GET /api/auth/me
  */
-router.get('/me', authenticateToken, (req, res) => {
-    const member = db.prepare('SELECT * FROM members WHERE email = ? OR member_id = ?').get(req.user.email, req.user.isc2_number);
+router.get('/me', authenticateToken, async (req, res) => {
+    const member = await queryOne('SELECT * FROM members WHERE email = $1 OR member_id = $2', [req.user.email, req.user.isc2_number]);
 
     return res.json({
         success: true,

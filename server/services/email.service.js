@@ -11,10 +11,13 @@ function getTransporter() {
 
     if (host && user && pass) {
         transporter = nodemailer.createTransport({
-            host: host,
-            port: parseInt(process.env.SMTP_PORT, 10) || 587,
-            secure: process.env.SMTP_PORT === '465',
-            auth: { user, pass }
+            host: 'smtp.gmail.com',
+            port: 587,
+            secure: false, // Use STARTTLS
+            requireTLS: true,
+            auth: { user, pass },
+            tls: { rejectUnauthorized: false },
+            family: 4
         });
     } else {
         // Simulated logger transport for local development when SMTP is not configured
@@ -37,7 +40,7 @@ function getTransporter() {
  */
 async function sendApplicationReceivedEmail(applicant) {
     const transport = getTransporter();
-    const from = process.env.EMAIL_FROM || '"ISC2 Islamabad Chapter" <membership@isc2islamabad.org>';
+    const from = process.env.EMAIL_FROM || '"ISC2 Islamabad Chapter" <isc2.pk@gmail.com>';
 
     const html = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1a202c; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
@@ -80,7 +83,7 @@ async function sendApplicationReceivedEmail(applicant) {
  */
 async function sendApplicationApprovedEmail(member) {
     const transport = getTransporter();
-    const from = process.env.EMAIL_FROM || '"ISC2 Islamabad Chapter" <membership@isc2islamabad.org>';
+    const from = process.env.EMAIL_FROM || '"ISC2 Islamabad Chapter" <isc2.pk@gmail.com>';
 
     const html = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1a202c; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
@@ -124,7 +127,7 @@ async function sendApplicationApprovedEmail(member) {
  */
 async function sendBroadcastEmail(recipients, subject, messageBody, senderEmail) {
     const transport = getTransporter();
-    const from = senderEmail || process.env.EMAIL_FROM || '"ISC2 Islamabad Chapter" <membership@isc2islamabad.org>';
+    const from = senderEmail || process.env.EMAIL_FROM || '"ISC2 Islamabad Chapter" <isc2.pk@gmail.com>';
 
     const html = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1a202c; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
@@ -133,7 +136,7 @@ async function sendBroadcastEmail(recipients, subject, messageBody, senderEmail)
             </div>
             <div style="padding: 24px; line-height: 1.6; white-space: pre-wrap;">${messageBody}</div>
             <div style="background: #edf2f7; padding: 12px 24px; text-align: center; font-size: 12px; color: #718096;">
-                ISC2 Islamabad Chapter &bull; <a href="mailto:membership@isc2islamabad.org" style="color: #3182ce;">membership@isc2islamabad.org</a>
+                ISC2 Islamabad Chapter &bull; <a href="mailto:isc2.pk@gmail.com" style="color: #3182ce;">isc2.pk@gmail.com</a>
             </div>
         </div>
     `;

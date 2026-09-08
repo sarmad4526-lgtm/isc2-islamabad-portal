@@ -552,6 +552,9 @@ async function syncWithServer() {
                 }
 
                 // Re-render UI with synced server data
+                localStorage.removeItem('isc2_active_members');
+                localStorage.removeItem('isc2_inactive_members');
+                localStorage.removeItem('isc2_pending_requests');
                 saveStateToStorage();
                 renderStatsDOM();
                 renderActiveMembersDOM();
@@ -626,6 +629,7 @@ function renderActiveMembersDOM() {
             <td>${member.chapter || 'Pakistan Islamabad Chapter'}</td>
             <td><a href="#" class="member-link" onclick="openMemberDetails('${member.memberId}'); return false;">${member.name}</a></td>
             <td>${member.role || 'Member'}</td>
+            <td>${member.city && member.country ? `${member.city}, ${member.country}` : 'Not specified'}</td>
             <td><span class="status-badge active">Active</span></td>
             <td>${formatDisplayDate(member.termStartDate)}</td>
             <td>${formatDisplayDate(member.termEndDate)}</td>
@@ -662,6 +666,7 @@ function renderInactiveMembersDOM() {
             <td>${member.chapter || 'Pakistan Islamabad Chapter'}</td>
             <td><a href="#" class="member-link" onclick="openMemberDetails('${member.memberId}'); return false;">${member.name}</a></td>
             <td>${member.role || 'Member'}</td>
+            <td>${member.city && member.country ? `${member.city}, ${member.country}` : 'Not specified'}</td>
             <td><span class="status-badge inactive">Inactive</span></td>
             <td>${formatDisplayDate(member.termStartDate)}</td>
             <td>${formatDisplayDate(member.termEndDate)}</td>
@@ -715,6 +720,7 @@ function renderRequestsDOM() {
                 <td class="id-cell" style="font-weight:700; color:var(--text-primary);">${isc2Num}</td>
                 <td><a href="#" class="member-link" onclick="openRequestDetails('${req.requestId}'); return false;">${req.name}</a></td>
                 <td>${req.email}</td>
+                <td>${req.city && req.country ? `${req.city}, ${req.country}` : 'Not specified'}</td>
                 <td>${req.company || 'N/A'}</td>
                 <td>${req.jobTitle || 'N/A'}</td>
                 <td>${certBadges}</td>
@@ -769,6 +775,28 @@ window.approveRequest = async function(requestId) {
 
     if (!confirm(`Approve membership request for ${req.name} with ISC2 Member ID [${req.isc2Number}]?`)) return;
 
+    // If server is online, do the API call FIRST so we know it succeeded before updating UI
+    if (isServerOnline) {
+        try {
+            const approveRes = await authFetch(`/api/admin/applications/${requestId}/approve`, { method: 'POST' });
+            if (!approveRes.ok) {
+                const errData = await approveRes.json().catch(() => ({}));
+                const msg = errData.message || `Server returned ${approveRes.status}`;
+                window.showToast(`Approval failed: ${msg}`, 'error');
+                return;
+            }
+        } catch (e) {
+            window.showToast('Could not reach server. Please check connection and try again.', 'error');
+            return;
+        }
+        // Sync from server so UI reflects real DB state
+        await syncWithServer();
+        window.closeModal();
+        window.showToast(`Member ${req.name} approved and added to Active Members!`, 'success');
+        return;
+    }
+
+    // Offline fallback: update local state only
     const today = new Date().toISOString().split('T')[0];
     const nextYear = new Date();
     nextYear.setFullYear(nextYear.getFullYear() + 1);
@@ -802,14 +830,7 @@ window.approveRequest = async function(requestId) {
     renderRequestsDOM();
     renderEmailRecipients();
 
-    window.showToast(`Member ${req.name} approved and added to Active Members!`, 'success');
-
-    if (isServerOnline) {
-        try {
-            await authFetch(`/api/admin/applications/${requestId}/approve`, { method: 'POST' });
-            await syncWithServer();
-        } catch (e) {}
-    }
+    window.showToast(`Member ${req.name} approved and added to Active Members! (Offline mode)`, 'success');
 };
 
 window.rejectRequest = async function(requestId) {
@@ -1017,6 +1038,10 @@ window.openMemberDetails = function(memberId) {
                 ${member.chapter || 'Pakistan Islamabad Chapter'} &bull; ${member.role || 'Member'}
             </div>
             <div class="detail-item">
+                <strong>Location (City, Country)</strong>
+                ${member.city || 'N/A'}, ${member.country || 'N/A'}
+            </div>
+            <div class="detail-item">
                 <strong>Company & Job Title</strong>
                 ${member.jobTitle || 'N/A'} at ${member.company || 'N/A'}
             </div>
@@ -1112,6 +1137,10 @@ window.openRequestDetails = function(requestId) {
             <div class="detail-item">
                 <strong>Email Address</strong>
                 <a href="mailto:${req.email}">${req.email}</a>
+            </div>
+            <div class="detail-item">
+                <strong>Location (City, Country)</strong>
+                ${req.city || 'N/A'}, ${req.country || 'N/A'}
             </div>
             <div class="detail-item">
                 <strong>Company</strong>

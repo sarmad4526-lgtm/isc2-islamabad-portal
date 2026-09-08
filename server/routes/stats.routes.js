@@ -1,16 +1,17 @@
 const express = require('express');
 const router = express.Router();
-const { db, getTodayString, getMemberStatus } = require('../config/db');
+const { queryAll, queryOne, getMemberStatus } = require('../config/db');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
 /**
  * GET /api/admin/stats
  * Real-time dashboard statistics calculated from database
  */
-router.get('/', authenticateToken, requireAdmin, (req, res, next) => {
+router.get('/', authenticateToken, requireAdmin, async (req, res, next) => {
     try {
-        const members = db.prepare('SELECT id, member_id, term_end_date FROM members').all();
-        const pendingCount = db.prepare("SELECT COUNT(*) as count FROM applications WHERE status = 'Pending'").get().count;
+        const members = await queryAll('SELECT id, member_id, term_end_date FROM members');
+        const pendingRow = await queryOne("SELECT COUNT(*) as count FROM applications WHERE status = 'Pending'");
+        const pendingCount = pendingRow ? parseInt(pendingRow.count, 10) : 0;
 
         let activeCount = 0;
         let inactiveCount = 0;

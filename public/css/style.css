@@ -369,10 +369,10 @@ img {
 .linkedin-post img {
     width: 100%;
     height: auto;
-    max-height: 600px;
+    max-height: 500px;
     object-fit: contain;
     display: block;
-    background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
+    background: #f7fafc;
     border-bottom: 3px solid var(--accent-teal);
 }
 

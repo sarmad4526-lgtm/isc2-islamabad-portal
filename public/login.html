@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Member Login | ISC2 Islamabad Chapter</title>
+    <title>Admin Login | ISC2 Islamabad Chapter</title>
     <link rel="stylesheet" href="css/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@300;400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -12,15 +12,15 @@
     <div class="site-wrapper">
         <header class="site-header inner-page-header">
             <div class="header-top">
-    <div class="container">
-        <div class="site-branding centered-branding">
-            <div class="site-branding-text">
-                <h1 class="site-title"><a href="index.html">ISC2 Islamabad Chapter</a></h1>
-                <p class="site-description">Connect. Educate. Inspire. Secure.</p>
+                <div class="container">
+                    <div class="site-branding centered-branding">
+                        <div class="site-branding-text">
+                            <h1 class="site-title"><a href="index.html">ISC2 Islamabad Chapter</a></h1>
+                            <p class="site-description">Connect. Educate. Inspire. Secure.</p>
+                        </div>
+                    </div>
+                </div>
             </div>
-        </div>
-    </div>
-</div>
             <nav class="navigation-top">
                 <div class="container">
                     <button class="menu-toggle" aria-controls="top-menu" aria-expanded="false">
@@ -30,7 +30,8 @@
                         <ul id="top-menu" class="menu">
                             <li class="menu-item"><a href="index.html">Home</a></li>
                             <li class="menu-item"><a href="membership.html">Membership</a></li>
-                            <li class="menu-item current-menu-item"><a href="login.html">Member Login</a></li>
+                            <li class="menu-item"><a href="events.html">Events</a></li>
+                            <li class="menu-item"><a href="leadership.html">Leadership</a></li>
                         </ul>
                     </div>
                 </div>
@@ -42,16 +43,16 @@
                     <div class="login-wrapper">
                         <div class="login-box">
                             <div class="login-header">
-                                <img src="https://www.isc2.org/-/media/ISC2/Logos/ISC2-Logo-Vertical-Black.ashx" alt="ISC2" class="login-logo">
-                                <h2>Member Portal</h2>
-                                <p>ISC2 Islamabad Chapter</p>
+                                <i class="fas fa-shield-alt" style="font-size: 2.5rem; color: var(--accent-blue); margin-bottom: 15px;"></i>
+                                <h2>Admin Login</h2>
+                                <p>ISC2 Islamabad Chapter Portal</p>
                             </div>
                             <form class="login-form" id="loginForm">
                                 <div class="form-row">
-                                    <label for="loginEmail">Email or ISC2 Membership Number</label>
+                                    <label for="loginEmail">Email</label>
                                     <div class="input-with-icon">
-                                        <i class="fas fa-id-card"></i>
-                                        <input type="text" id="loginEmail" name="loginEmail" placeholder="your@email.com or Membership Number" required>
+                                        <i class="fas fa-envelope"></i>
+                                        <input type="email" id="loginEmail" name="loginEmail" placeholder="admin@example.com" required>
                                     </div>
                                 </div>
                                 <div class="form-row">
@@ -59,33 +60,15 @@
                                     <div class="input-with-icon">
                                         <i class="fas fa-lock"></i>
                                         <input type="password" id="loginPassword" name="loginPassword" placeholder="Enter your password" required>
+                                        <button type="button" id="togglePassword" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--light-color); font-size: 1rem; padding: 4px;">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
                                     </div>
                                 </div>
-                                <div class="form-row form-options">
-                                    <label class="remember-me">
-                                        <input type="checkbox" name="remember"> Remember me
-                                    </label>
-                                    <a href="#" class="forgot-password">Forgot password?</a>
-                                </div>
-                                <div class="form-row">
+                                <div class="form-row" style="margin-top: 30px;">
                                     <button type="submit" class="btn-login">Sign In</button>
                                 </div>
                             </form>
-                            <div class="login-divider">
-                                <span>or Quick Demo Login</span>
-                            </div>
-                            <div style="display: flex; gap: 8px; margin-bottom: 16px;">
-                                <button type="button" class="btn-secondary" style="flex:1; padding:8px; font-size:12px; background:#e2e8f0; border:1px solid #cbd5e0; border-radius:4px; cursor:pointer;" onclick="document.getElementById('loginEmail').value='admin@isc2islamabad.org'; document.getElementById('loginPassword').value='Admin@ISC2!2026'; document.getElementById('loginForm').dispatchEvent(new Event('submit', {cancelable: true, bubbles: true}));">
-                                    <i class="fas fa-user-shield"></i> Demo Admin
-                                </button>
-                                <button type="button" class="btn-secondary" style="flex:1; padding:8px; font-size:12px; background:#e2e8f0; border:1px solid #cbd5e0; border-radius:4px; cursor:pointer;" onclick="document.getElementById('loginEmail').value='jawwad.s@isc2islamabad.org'; document.getElementById('loginPassword').value='Password@123'; document.getElementById('loginForm').dispatchEvent(new Event('submit', {cancelable: true, bubbles: true}));">
-                                    <i class="fas fa-user"></i> Demo Member
-                                </button>
-                            </div>
-                            <div class="login-alt">
-                                <p>Not a member yet? <a href="membership.html">Join the Chapter</a></p>
-                                <p class="admin-link"><a href="admin.html"><i class="fas fa-shield-alt"></i> Admin Dashboard Directly</a></p>
-                            </div>
                         </div>
                     </div>
                 </main>
@@ -100,5 +83,17 @@
         </footer>
     </div>
     <script src="js/script.js"></script>
+    <script>
+        // Password visibility toggle
+        const toggleBtn = document.getElementById('togglePassword');
+        const passwordInput = document.getElementById('loginPassword');
+        toggleBtn.addEventListener('click', function () {
+            const isPassword = passwordInput.type === 'password';
+            passwordInput.type = isPassword ? 'text' : 'password';
+            toggleBtn.innerHTML = isPassword
+                ? '<i class="fas fa-eye-slash"></i>'
+                : '<i class="fas fa-eye"></i>';
+        });
+    </script>
 </body>
 </html>

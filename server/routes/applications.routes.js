@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
-const { db, getTodayString, calculateEndDate } = require('../config/db');
+const { queryAll, queryOne, execute, transaction, getTodayString, calculateEndDate } = require('../config/db');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const { sendApplicationReceivedEmail, sendApplicationApprovedEmail } = require('../services/email.service');
 
@@ -19,6 +19,8 @@ router.post('/apply', async (req, res, next) => {
             jobTitle,
             specialisation,
             industry,
+            country,
+            city,
             certifications,
             workingGroups
         } = req.body;
@@ -33,13 +35,13 @@ router.post('/apply', async (req, res, next) => {
         }
 
         // Check if member with this ISC2 number already exists
-        const existingMember = db.prepare('SELECT id FROM members WHERE member_id = ?').get(cleanIsc2);
+        const existingMember = await queryOne('SELECT id FROM members WHERE member_id = $1', [cleanIsc2]);
         if (existingMember) {
             return res.status(400).json({ success: false, message: `A member with ISC2 ID ${cleanIsc2} is already registered in the chapter.` });
         }
 
         // Check if request with this ISC2 number is already pending
-        const existingApp = db.prepare("SELECT id FROM applications WHERE isc2_number = ? AND status = 'Pending'").get(cleanIsc2);
+        const existingApp = await queryOne("SELECT id FROM applications WHERE isc2_number = $1 AND status = 'Pending'", [cleanIsc2]);
         if (existingApp) {
             return res.status(400).json({ success: false, message: `An application with ISC2 ID ${cleanIsc2} is already pending review.` });
         }
@@ -48,18 +50,19 @@ router.post('/apply', async (req, res, next) => {
         const todayStr = getTodayString();
         
         // Generate Request Reference ID
-        const count = db.prepare('SELECT COUNT(*) as count FROM applications').get().count;
+        const countRow = await queryOne('SELECT COUNT(*) as count FROM applications');
+        const count = countRow ? parseInt(countRow.count, 10) : 0;
         const requestId = `REQ-${new Date().getFullYear()}-${String(count + 1).padStart(3, '0')}`;
 
         const certsJson = JSON.stringify(Array.isArray(certifications) ? certifications : []);
         const groupsJson = JSON.stringify(Array.isArray(workingGroups) ? workingGroups : []);
 
-        db.prepare(`
+        await execute(`
             INSERT INTO applications (
                 request_id, isc2_number, name, email, company, job_title,
-                specialisation, industry, certifications, working_groups, status, date
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?)
-        `).run(
+                specialisation, industry, country, city, certifications, working_groups, status, date
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'Pending', $13)
+        `, [
             requestId,
             cleanIsc2,
             fullName,
@@ -68,10 +71,12 @@ router.post('/apply', async (req, res, next) => {
             jobTitle || 'Member',
             specialisation || 'Not specified',
             industry || 'Not specified',
+            country || 'Not specified',
+            city || 'Not specified',
             certsJson,
             groupsJson,
             todayStr
-        );
+        ]);
 
         const newApp = {
             requestId,
@@ -99,9 +104,9 @@ router.post('/apply', async (req, res, next) => {
  * GET /api/admin/applications
  * Admin endpoint to list all pending applications
  */
-router.get('/', authenticateToken, requireAdmin, (req, res, next) => {
+router.get('/', authenticateToken, requireAdmin, async (req, res, next) => {
     try {
-        const applications = db.prepare("SELECT * FROM applications WHERE status = 'Pending' ORDER BY id DESC").all();
+        const applications = await queryAll("SELECT * FROM applications WHERE status = 'Pending' ORDER BY id DESC");
 
         const formatted = applications.map(app => ({
             id: app.id,
@@ -113,6 +118,8 @@ router.get('/', authenticateToken, requireAdmin, (req, res, next) => {
             jobTitle: app.job_title,
             specialisation: app.specialisation,
             industry: app.industry,
+            country: app.country,
+            city: app.city,
             certifications: JSON.parse(app.certifications || '[]'),
             workingGroups: JSON.parse(app.working_groups || '[]'),
             date: app.date,
@@ -133,10 +140,13 @@ router.get('/', authenticateToken, requireAdmin, (req, res, next) => {
  * POST /api/admin/applications/:id/approve
  * Approves application, creates Active Member with self-assigned ISC2 ID, and records 1-year term
  */
-router.post('/:id/approve', authenticateToken, requireAdmin, (req, res, next) => {
+router.post('/:id/approve', authenticateToken, requireAdmin, async (req, res, next) => {
     try {
         const appId = req.params.id;
-        const app = db.prepare('SELECT * FROM applications WHERE request_id = ? OR id = ?').get(appId, appId);
+        const app = await queryOne(
+            'SELECT * FROM applications WHERE request_id = $1 OR id = $2',
+            [appId, isNaN(appId) ? -1 : parseInt(appId, 10)]
+        );
 
         if (!app) {
             return res.status(404).json({ success: false, message: 'Application not found.' });
@@ -150,46 +160,63 @@ router.post('/:id/approve', authenticateToken, requireAdmin, (req, res, next) =>
         const startDate = getTodayString();
         const endDate = calculateEndDate(startDate);
 
-        const approveTx = db.transaction(() => {
-            // 1. Insert into members table using self-assigned ISC2 Number as member_id
-            db.prepare(`
-                INSERT INTO members (
-                    member_id, name, email, chapter, role, company, job_title,
-                    specialisation, industry, certifications, working_groups,
-                    term_start_date, term_end_date
-                ) VALUES (?, ?, ?, 'Pakistan Islamabad Chapter', 'Member', ?, ?, ?, ?, ?, ?, ?, ?)
-            `).run(
-                cleanIsc2,
-                app.name,
-                app.email,
-                app.company,
-                app.job_title,
-                app.specialisation,
-                app.industry,
-                app.certifications,
-                app.working_groups,
-                startDate,
-                endDate
-            );
+        try {
+            await transaction(async (tx) => {
+                // 1. Insert into members table using self-assigned ISC2 Number as member_id
+                await tx.execute(`
+                    INSERT INTO members (
+                        member_id, name, email, chapter, role, company, job_title,
+                        specialisation, industry, country, city, certifications, working_groups,
+                        term_start_date, term_end_date
+                    ) VALUES ($1, $2, $3, 'Pakistan Islamabad Chapter', 'Member', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                `, [
+                    cleanIsc2,
+                    app.name,
+                    app.email,
+                    app.company,
+                    app.job_title,
+                    app.specialisation,
+                    app.industry,
+                    app.country,
+                    app.city,
+                    app.certifications,
+                    app.working_groups,
+                    startDate,
+                    endDate
+                ]);
 
-            // 2. Insert initial membership history period 1
-            db.prepare(`
-                INSERT INTO membership_history (member_id, period_number, start_date, end_date, status)
-                VALUES (?, 1, ?, ?, 'Active')
-            `).run(cleanIsc2, startDate, endDate);
+                // 2. Insert initial membership history period 1
+                await tx.execute(`
+                    INSERT INTO membership_history (member_id, period_number, start_date, end_date, status)
+                    VALUES ($1, 1, $2, $3, 'Active')
+                `, [cleanIsc2, startDate, endDate]);
 
-            // 3. Create or update user login credentials
-            const memberPassHash = bcrypt.hashSync('Password@123', 10);
-            db.prepare(`
-                INSERT OR IGNORE INTO users (email, isc2_number, password_hash, role)
-                VALUES (?, ?, ?, 'MEMBER')
-            `).run(app.email, cleanIsc2, memberPassHash);
+                // 3. Create or update user login credentials
+                const memberPassHash = bcrypt.hashSync('Password@123', 10);
+                await tx.execute(`
+                    INSERT INTO users (email, isc2_number, password_hash, role)
+                    VALUES ($1, $2, $3, 'MEMBER')
+                    ON CONFLICT DO NOTHING
+                `, [app.email, cleanIsc2, memberPassHash]);
 
-            // 4. Mark application as Approved
-            db.prepare("UPDATE applications SET status = 'Approved' WHERE id = ?").run(app.id);
-        });
-
-        approveTx();
+                // 4. Mark application as Approved
+                await tx.execute("UPDATE applications SET status = 'Approved' WHERE id = $1", [app.id]);
+            });
+        } catch (txErr) {
+            if (txErr.message && txErr.message.includes('unique') && txErr.message.includes('email')) {
+                return res.status(409).json({
+                    success: false,
+                    message: `A member with the email "${app.email}" is already registered. This application cannot be approved again.`
+                });
+            }
+            if (txErr.message && txErr.message.includes('unique') && txErr.message.includes('member_id')) {
+                return res.status(409).json({
+                    success: false,
+                    message: `A member with ISC2 ID ${cleanIsc2} already exists. This application cannot be approved again.`
+                });
+            }
+            throw txErr;
+        }
 
         const createdMember = {
             memberId: cleanIsc2,
@@ -216,16 +243,19 @@ router.post('/:id/approve', authenticateToken, requireAdmin, (req, res, next) =>
  * POST /api/admin/applications/:id/reject
  * Rejects application
  */
-router.post('/:id/reject', authenticateToken, requireAdmin, (req, res, next) => {
+router.post('/:id/reject', authenticateToken, requireAdmin, async (req, res, next) => {
     try {
         const appId = req.params.id;
-        const app = db.prepare('SELECT * FROM applications WHERE request_id = ? OR id = ?').get(appId, appId);
+        const app = await queryOne(
+            'SELECT * FROM applications WHERE request_id = $1 OR id = $2',
+            [appId, isNaN(appId) ? -1 : parseInt(appId, 10)]
+        );
 
         if (!app) {
             return res.status(404).json({ success: false, message: 'Application not found.' });
         }
 
-        db.prepare("UPDATE applications SET status = 'Rejected' WHERE id = ?").run(app.id);
+        await execute("UPDATE applications SET status = 'Rejected' WHERE id = $1", [app.id]);
 
         return res.json({
             success: true,

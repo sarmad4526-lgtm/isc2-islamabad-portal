@@ -62,6 +62,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const email = (formData.get('EMAIL') || '').trim();
             const firstName = (formData.get('FNAME') || '').trim();
             const lastName = (formData.get('LNAME') || '').trim();
+            const country = (formData.get('COUNTRY') || '').trim();
+            const city = (formData.get('CITY') || '').trim();
             const jobTitle = (formData.get('MMERGE3') || '').trim();
             const specialisation = (formData.get('MMERGE4') || '').trim();
             const industry = (formData.get('MMERGE5') || '').trim();
@@ -90,6 +92,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         firstName,
                         lastName,
                         isc2Number,
+                        country,
+                        city,
                         jobTitle,
                         specialisation,
                         industry,

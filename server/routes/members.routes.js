@@ -1,18 +1,17 @@
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
-const { db, getTodayString, calculateEndDate, getMemberStatus } = require('../config/db');
+const { queryAll, queryOne, execute, transaction, getTodayString, calculateEndDate, getMemberStatus } = require('../config/db');
 const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
 /**
  * GET /api/admin/members
  * Query params: ?status=active|inactive|all&search=term
  */
-router.get('/', authenticateToken, requireAdmin, (req, res, next) => {
+router.get('/', authenticateToken, requireAdmin, async (req, res, next) => {
     try {
         const { status, search } = req.query;
-        let query = 'SELECT * FROM members ORDER BY id DESC';
-        let members = db.prepare(query).all();
+        let members = await queryAll('SELECT * FROM members ORDER BY id DESC');
 
         // Parse JSON fields and dynamic status
         members = members.map(m => {
@@ -62,7 +61,7 @@ router.get('/', authenticateToken, requireAdmin, (req, res, next) => {
  * POST /api/admin/members
  * Creates a new member directly from admin dashboard
  */
-router.post('/', authenticateToken, requireAdmin, (req, res, next) => {
+router.post('/', authenticateToken, requireAdmin, async (req, res, next) => {
     try {
         const {
             memberId,
@@ -74,6 +73,8 @@ router.post('/', authenticateToken, requireAdmin, (req, res, next) => {
             jobTitle,
             specialisation,
             industry,
+            country,
+            city,
             certifications,
             workingGroups,
             termStartDate,
@@ -93,94 +94,102 @@ router.post('/', authenticateToken, requireAdmin, (req, res, next) => {
         const cleanName = name.trim();
 
         // Check if member already exists
-        const existing = db.prepare('SELECT id, member_id FROM members WHERE member_id = ? OR email = ?').get(cleanId || '___NONE___', cleanEmail);
+        const existing = await queryOne(
+            'SELECT id, member_id FROM members WHERE member_id = $1 OR email = $2',
+            [cleanId || '___NONE___', cleanEmail]
+        );
         const finalMemberId = existing ? existing.member_id : (cleanId || `00033${Math.floor(1000 + Math.random() * 9000)}`);
 
-        const createTx = db.transaction(() => {
+        await transaction(async (tx) => {
             if (existing) {
                 // Update existing member and activate term
-                db.prepare(`
+                await tx.execute(`
                     UPDATE members SET
-                        name = ?,
-                        email = ?,
-                        chapter = ?,
-                        role = ?,
-                        company = ?,
-                        job_title = ?,
-                        specialisation = ?,
-                        industry = ?,
-                        certifications = ?,
-                        working_groups = ?,
-                        term_start_date = ?,
-                        term_end_date = ?,
+                        name = $1,
+                        email = $2,
+                        chapter = $3,
+                        role = $4,
+                        company = $5,
+                        job_title = $6,
+                        specialisation = $7,
+                        industry = $8,
+                        country = $9,
+                        city = $10,
+                        certifications = $11,
+                        working_groups = $12,
+                        term_start_date = $13,
+                        term_end_date = $14,
                         updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ?
-                `).run(
-                    cleanName,
-                    cleanEmail,
+                    WHERE id = $15
+                `, [
+                    cleanName, cleanEmail,
                     chapter || 'Pakistan Islamabad Chapter',
                     role || 'Member',
                     company || 'Not specified',
                     jobTitle || 'Member',
                     specialisation || 'Not specified',
                     industry || 'Not specified',
-                    certsJson,
-                    groupsJson,
-                    startDate,
-                    endDate,
+                    country || 'Not specified',
+                    city || 'Not specified',
+                    certsJson, groupsJson,
+                    startDate, endDate,
                     existing.id
-                );
+                ]);
 
                 // Add period to history
-                const maxPeriodRow = db.prepare('SELECT MAX(period_number) as maxP FROM membership_history WHERE member_id = ?').get(finalMemberId);
-                const nextPeriod = (maxPeriodRow && maxPeriodRow.maxP ? maxPeriodRow.maxP : 0) + 1;
+                const maxPeriodRow = await tx.queryOne(
+                    'SELECT MAX(period_number) as maxp FROM membership_history WHERE member_id = $1',
+                    [finalMemberId]
+                );
+                const nextPeriod = (maxPeriodRow && maxPeriodRow.maxp ? parseInt(maxPeriodRow.maxp, 10) : 0) + 1;
 
-                db.prepare(`
+                await tx.execute(`
                     INSERT INTO membership_history (member_id, period_number, start_date, end_date, status)
-                    VALUES (?, ?, ?, ?, 'Active')
-                `).run(finalMemberId, nextPeriod, startDate, endDate);
+                    VALUES ($1, $2, $3, $4, 'Active')
+                `, [finalMemberId, nextPeriod, startDate, endDate]);
             } else {
                 // Insert new member
-                db.prepare(`
+                await tx.execute(`
                     INSERT INTO members (
                         member_id, name, email, chapter, role, company, job_title,
-                        specialisation, industry, certifications, working_groups,
+                        specialisation, industry, country, city, certifications, working_groups,
                         term_start_date, term_end_date
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                `).run(
-                    finalMemberId,
-                    cleanName,
-                    cleanEmail,
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+                `, [
+                    finalMemberId, cleanName, cleanEmail,
                     chapter || 'Pakistan Islamabad Chapter',
                     role || 'Member',
                     company || 'Not specified',
                     jobTitle || 'Member',
                     specialisation || 'Not specified',
                     industry || 'Not specified',
-                    certsJson,
-                    groupsJson,
-                    startDate,
-                    endDate
-                );
+                    country || 'Not specified',
+                    city || 'Not specified',
+                    certsJson, groupsJson,
+                    startDate, endDate
+                ]);
 
-                db.prepare(`
+                await tx.execute(`
                     INSERT INTO membership_history (member_id, period_number, start_date, end_date, status)
-                    VALUES (?, 1, ?, ?, 'Active')
-                `).run(finalMemberId, startDate, endDate);
+                    VALUES ($1, 1, $2, $3, 'Active')
+                `, [finalMemberId, startDate, endDate]);
 
                 // Create login credentials for member
                 const memberPassHash = bcrypt.hashSync('Password@123', 10);
-                db.prepare(`
-                    INSERT OR IGNORE INTO users (email, isc2_number, password_hash, role)
-                    VALUES (?, ?, ?, 'MEMBER')
-                `).run(cleanEmail, finalMemberId, memberPassHash);
+                // Use ON CONFLICT for Postgres, INSERT OR IGNORE handled by SQLite conversion
+                await tx.execute(`
+                    INSERT INTO users (email, isc2_number, password_hash, role)
+                    VALUES ($1, $2, $3, 'MEMBER')
+                    ON CONFLICT DO NOTHING
+                `, [cleanEmail, finalMemberId, memberPassHash]);
             }
 
             // Remove any pending application for this email or ID
-            db.prepare('DELETE FROM applications WHERE email = ? OR isc2_number = ?').run(cleanEmail, finalMemberId);
+            await tx.execute(
+                'DELETE FROM applications WHERE email = $1 OR isc2_number = $2',
+                [cleanEmail, finalMemberId]
+            );
         });
-
-        createTx();
 
         const createdMember = {
             memberId: finalMemberId,
@@ -192,6 +201,8 @@ router.post('/', authenticateToken, requireAdmin, (req, res, next) => {
             jobTitle: jobTitle || 'Member',
             specialisation: specialisation || 'Not specified',
             industry: industry || 'Not specified',
+            country: country || 'Not specified',
+            city: city || 'Not specified',
             certifications: Array.isArray(certifications) ? certifications : [],
             workingGroups: Array.isArray(workingGroups) ? workingGroups : [],
             termStartDate: startDate,
@@ -214,21 +225,24 @@ router.post('/', authenticateToken, requireAdmin, (req, res, next) => {
  * GET /api/admin/members/:id
  * Fetches member profile with full membership history
  */
-router.get('/:id', authenticateToken, requireAdmin, (req, res, next) => {
+router.get('/:id', authenticateToken, requireAdmin, async (req, res, next) => {
     try {
         const memberId = req.params.id;
-        const member = db.prepare('SELECT * FROM members WHERE member_id = ? OR id = ?').get(memberId, memberId);
+        const member = await queryOne(
+            'SELECT * FROM members WHERE member_id = $1 OR id = $2',
+            [memberId, isNaN(memberId) ? -1 : parseInt(memberId, 10)]
+        );
 
         if (!member) {
             return res.status(404).json({ success: false, message: 'Member not found.' });
         }
 
-        const history = db.prepare(`
-            SELECT period_number as period, start_date as startDate, end_date as endDate, status
+        const history = await queryAll(`
+            SELECT period_number as period, start_date as "startDate", end_date as "endDate", status
             FROM membership_history
-            WHERE member_id = ?
+            WHERE member_id = $1
             ORDER BY period_number ASC
-        `).all(member.member_id);
+        `, [member.member_id]);
 
         const dynamicStatus = getMemberStatus(member.term_end_date);
 
@@ -255,10 +269,13 @@ router.get('/:id', authenticateToken, requireAdmin, (req, res, next) => {
  * POST /api/admin/members/:id/reactivate
  * Single member reactivation for 1 year from current date
  */
-router.post('/:id/reactivate', authenticateToken, requireAdmin, (req, res, next) => {
+router.post('/:id/reactivate', authenticateToken, requireAdmin, async (req, res, next) => {
     try {
         const memberId = req.params.id;
-        const member = db.prepare('SELECT * FROM members WHERE member_id = ? OR id = ?').get(memberId, memberId);
+        const member = await queryOne(
+            'SELECT * FROM members WHERE member_id = $1 OR id = $2',
+            [memberId, isNaN(memberId) ? -1 : parseInt(memberId, 10)]
+        );
 
         if (!member) {
             return res.status(404).json({ success: false, message: 'Member not found.' });
@@ -267,36 +284,34 @@ router.post('/:id/reactivate', authenticateToken, requireAdmin, (req, res, next)
         const startDate = getTodayString();
         const endDate = calculateEndDate(startDate);
 
-        const reactivateTx = db.transaction(() => {
+        await transaction(async (tx) => {
             // 1. Update member active term
-            db.prepare(`
+            await tx.execute(`
                 UPDATE members
-                SET term_start_date = ?, term_end_date = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE member_id = ?
-            `).run(startDate, endDate, member.member_id);
+                SET term_start_date = $1, term_end_date = $2, updated_at = CURRENT_TIMESTAMP
+                WHERE member_id = $3
+            `, [startDate, endDate, member.member_id]);
 
             // 2. Mark previous periods as expired
-            db.prepare(`
+            await tx.execute(`
                 UPDATE membership_history
                 SET status = 'Expired'
-                WHERE member_id = ?
-            `).run(member.member_id);
+                WHERE member_id = $1
+            `, [member.member_id]);
 
             // 3. Find next period number
-            const lastPeriod = db.prepare(`
-                SELECT MAX(period_number) as maxPeriod FROM membership_history WHERE member_id = ?
-            `).get(member.member_id);
+            const lastPeriod = await tx.queryOne(`
+                SELECT MAX(period_number) as maxperiod FROM membership_history WHERE member_id = $1
+            `, [member.member_id]);
 
-            const nextPeriod = (lastPeriod && lastPeriod.maxPeriod ? lastPeriod.maxPeriod : 0) + 1;
+            const nextPeriod = (lastPeriod && lastPeriod.maxperiod ? parseInt(lastPeriod.maxperiod, 10) : 0) + 1;
 
             // 4. Insert new active period
-            db.prepare(`
+            await tx.execute(`
                 INSERT INTO membership_history (member_id, period_number, start_date, end_date, status)
-                VALUES (?, ?, ?, ?, 'Active')
-            `).run(member.member_id, nextPeriod, startDate, endDate);
+                VALUES ($1, $2, $3, $4, 'Active')
+            `, [member.member_id, nextPeriod, startDate, endDate]);
         });
-
-        reactivateTx();
 
         return res.json({
             success: true,
@@ -313,7 +328,7 @@ router.post('/:id/reactivate', authenticateToken, requireAdmin, (req, res, next)
  * POST /api/admin/members/bulk-reactivate
  * Batch reactivates an array of inactive member IDs
  */
-router.post('/bulk-reactivate', authenticateToken, requireAdmin, (req, res, next) => {
+router.post('/bulk-reactivate', authenticateToken, requireAdmin, async (req, res, next) => {
     try {
         const { memberIds } = req.body;
 
@@ -324,37 +339,38 @@ router.post('/bulk-reactivate', authenticateToken, requireAdmin, (req, res, next
         const startDate = getTodayString();
         const endDate = calculateEndDate(startDate);
 
-        const bulkTx = db.transaction((ids) => {
-            for (const id of ids) {
-                const member = db.prepare('SELECT * FROM members WHERE member_id = ? OR id = ?').get(id, id);
+        await transaction(async (tx) => {
+            for (const id of memberIds) {
+                const member = await tx.queryOne(
+                    'SELECT * FROM members WHERE member_id = $1 OR id = $2',
+                    [String(id), isNaN(id) ? -1 : parseInt(id, 10)]
+                );
                 if (!member) continue;
 
-                db.prepare(`
+                await tx.execute(`
                     UPDATE members
-                    SET term_start_date = ?, term_end_date = ?, updated_at = CURRENT_TIMESTAMP
-                    WHERE member_id = ?
-                `).run(startDate, endDate, member.member_id);
+                    SET term_start_date = $1, term_end_date = $2, updated_at = CURRENT_TIMESTAMP
+                    WHERE member_id = $3
+                `, [startDate, endDate, member.member_id]);
 
-                db.prepare(`
+                await tx.execute(`
                     UPDATE membership_history
                     SET status = 'Expired'
-                    WHERE member_id = ?
-                `).run(member.member_id);
+                    WHERE member_id = $1
+                `, [member.member_id]);
 
-                const lastPeriod = db.prepare(`
-                    SELECT MAX(period_number) as maxPeriod FROM membership_history WHERE member_id = ?
-                `).get(member.member_id);
+                const lastPeriod = await tx.queryOne(`
+                    SELECT MAX(period_number) as maxperiod FROM membership_history WHERE member_id = $1
+                `, [member.member_id]);
 
-                const nextPeriod = (lastPeriod && lastPeriod.maxPeriod ? lastPeriod.maxPeriod : 0) + 1;
+                const nextPeriod = (lastPeriod && lastPeriod.maxperiod ? parseInt(lastPeriod.maxperiod, 10) : 0) + 1;
 
-                db.prepare(`
+                await tx.execute(`
                     INSERT INTO membership_history (member_id, period_number, start_date, end_date, status)
-                    VALUES (?, ?, ?, ?, 'Active')
-                `).run(member.member_id, nextPeriod, startDate, endDate);
+                    VALUES ($1, $2, $3, $4, 'Active')
+                `, [member.member_id, nextPeriod, startDate, endDate]);
             }
         });
-
-        bulkTx(memberIds);
 
         return res.json({
             success: true,
