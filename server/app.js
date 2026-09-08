@@ -47,9 +47,25 @@ app.use('/api/membership', applicationsRoutes);
 app.use('/api/admin/applications', applicationsRoutes);
 app.use('/api/admin/email', emailRoutes);
 
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-    res.json({ status: 'healthy', timestamp: new Date().toISOString() });
+// Health check endpoint with live DB diagnostic test
+const { queryOne, isTurso, isPostgres } = require('./config/db');
+app.get('/api/health', async (req, res) => {
+    try {
+        const test = await queryOne('SELECT 1 as val');
+        res.json({
+            status: 'healthy',
+            dbConnected: Boolean(test && (test.val === 1 || test.val === '1' || Number(test.val) === 1)),
+            dbMode: isTurso ? 'Turso' : isPostgres ? 'PostgreSQL' : 'Local SQLite',
+            timestamp: new Date().toISOString()
+        });
+    } catch (err) {
+        res.status(500).json({
+            status: 'error',
+            dbConnected: false,
+            error: err.message,
+            timestamp: new Date().toISOString()
+        });
+    }
 });
 
 // Serve Static Frontend Assets (HTML, CSS, JS, Images)
