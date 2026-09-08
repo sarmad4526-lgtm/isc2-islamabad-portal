@@ -11,6 +11,7 @@ require('dotenv').config();
 const path = require('path');
 
 // ─── Detect environment ─────────────────────────────────────────────────
+const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
 const tursoUrl = process.env.TURSO_DATABASE_URL || process.env.TURSO_URL;
 const isTurso = Boolean(tursoUrl);
 const pgUrl = !isTurso ? (process.env.POSTGRES_URL || process.env.DATABASE_URL) : null;
@@ -24,7 +25,7 @@ function getTursoClient() {
     const { createClient } = require('@libsql/client');
     tursoClient = createClient({
         url: tursoUrl,
-        authToken: process.env.TURSO_AUTH_TOKEN
+        authToken: process.env.TURSO_AUTH_TOKEN || undefined
     });
     return tursoClient;
 }
@@ -37,7 +38,7 @@ function getPgPool() {
     const { Pool } = require('pg');
     pgPool = new Pool({
         connectionString: pgUrl,
-        ssl: pgUrl.includes('localhost') ? false : { rejectUnauthorized: false },
+        ssl: pgUrl && pgUrl.includes('localhost') ? false : { rejectUnauthorized: false },
         max: 10,
         idleTimeoutMillis: 30000
     });
@@ -49,6 +50,9 @@ let sqliteDb = null;
 
 function getSqliteDb() {
     if (sqliteDb) return sqliteDb;
+    if (isVercel) {
+        throw new Error('Local SQLite (better-sqlite3) cannot be used in read-only Vercel Serverless environment. Please ensure TURSO_DATABASE_URL or POSTGRES_URL is configured in Vercel Environment Variables.');
+    }
     const Database = require('better-sqlite3');
     const dbPath = path.resolve(__dirname, '../../portal.db');
     sqliteDb = new Database(dbPath);
@@ -63,8 +67,6 @@ function normalizeSql(sql) {
     let clean = sql;
 
     if (isPostgres) {
-        // Keep $1, $2 for Postgres
-        // Convert INSERT OR IGNORE -> ON CONFLICT DO NOTHING
         if (/INSERT\s+OR\s+IGNORE\s+INTO/i.test(clean)) {
             clean = clean.replace(/INSERT\s+OR\s+IGNORE\s+INTO/i, 'INSERT INTO');
             if (!/ON\s+CONFLICT/i.test(clean)) {
@@ -73,7 +75,6 @@ function normalizeSql(sql) {
         }
         return clean;
     } else {
-        // Convert $1, $2 -> ? for SQLite / Turso
         clean = clean.replace(/\$\d+/g, '?');
         if (/ON\s+CONFLICT\s+DO\s+NOTHING/i.test(clean)) {
             clean = clean.replace(/\s+ON\s+CONFLICT\s+DO\s+NOTHING/i, '');
@@ -81,7 +82,6 @@ function normalizeSql(sql) {
                 clean = clean.replace(/INSERT\s+INTO/i, 'INSERT OR IGNORE INTO');
             }
         }
-        // Strip RETURNING clause for SQLite / Turso if present
         clean = clean.replace(/\s+RETURNING\s+.*/i, '');
         return clean;
     }
@@ -244,8 +244,11 @@ async function initDb() {
         await initTursoSchema();
     } else if (isPostgres) {
         await initPostgresSchema();
-    } else {
+    } else if (!isVercel) {
         initSqliteSchema();
+    } else {
+        console.warn('⚠️ Running on Vercel without cloud database variables configured!');
+        return;
     }
     const modeName = isTurso ? 'Turso' : isPostgres ? 'PostgreSQL' : 'Local SQLite';
     console.log(`✓ Database schema initialized successfully (${modeName})`);
@@ -549,5 +552,6 @@ module.exports = {
     calculateEndDate,
     getMemberStatus,
     isTurso,
-    isPostgres
+    isPostgres,
+    isVercel
 };
