@@ -155,7 +155,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     body: JSON.stringify({ identifier, password })
                 });
 
-                const data = await response.json();
+                let data;
+                try {
+                    data = await response.json();
+                } catch (parseErr) {
+                    throw new Error(`Server returned non-JSON response (HTTP ${response.status})`);
+                }
 
                 if (data.success) {
                     localStorage.setItem('isc2_token', data.token);
@@ -167,11 +172,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         alert(`Welcome back, ${data.user.name}!\nSigned in as: ${data.user.email}`);
                     }
                 } else {
-                    alert(`Login failed: ${data.message || 'Invalid credentials'}`);
+                    alert(`Login failed: ${data.message || data.error || 'Invalid credentials'}`);
                 }
             } catch (err) {
                 console.error('Login error:', err);
-                alert('Unable to connect to the authentication service. Please check your network connection.');
+                alert(`Login Notice: ${err.message || 'Unable to connect to authentication service.'}`);
             } finally {
                 if (submitBtn) {
                     submitBtn.disabled = false;

@@ -5,7 +5,8 @@ function errorHandler(err, req, res, next) {
     res.status(statusCode).json({
         success: false,
         message: err.message || 'Internal server error occurred.',
-        stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+        error: err.message,
+        stack: err.stack
     });
 }
 
