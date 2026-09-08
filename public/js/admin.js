@@ -316,9 +316,7 @@ window.showSection = function(sectionId) {
 // ============================================
 // AUTHENTICATED FETCH HELPER
 // ============================================
-const API_BASE = (window.location.protocol === 'file:' || (window.location.port && window.location.port !== '5000'))
-    ? 'http://localhost:5000'
-    : '';
+const API_BASE = window.location.protocol === 'file:' ? 'http://localhost:5000' : '';
 
 async function authFetch(url, options = {}) {
     const fullUrl = url.startsWith('http') ? url : `${API_BASE}${url}`;
