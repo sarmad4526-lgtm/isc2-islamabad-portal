@@ -52,8 +52,14 @@ const handler = async (req, res) => {
     } catch (e) {
         console.error('Handler ensureDb catch:', e.message || e);
     }
-    const targetUrl = req.headers['x-forwarded-path'] || req.headers['x-invoke-path'];
-    if (targetUrl) {
+    console.log('Incoming Vercel req.url:', req.url);
+    console.log('Vercel x-matched-path:', req.headers['x-matched-path']);
+    console.log('Vercel x-forwarded-path:', req.headers['x-forwarded-path']);
+    console.log('Vercel x-invoke-path:', req.headers['x-invoke-path']);
+    console.log('Vercel x-now-route-matches:', req.headers['x-now-route-matches']);
+
+    const targetUrl = req.headers['x-forwarded-path'] || req.headers['x-invoke-path'] || req.headers['x-matched-path'];
+    if (targetUrl && targetUrl !== '/api/index') {
         req.url = targetUrl;
     }
     return app(req, res);
