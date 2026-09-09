@@ -338,6 +338,34 @@ async function initTursoSchema() {
     for (const sql of statements) {
         await client.execute(sql);
     }
+
+    // Safely migrate existing tables if columns were added later
+    const alterStatements = [
+        `ALTER TABLE applications ADD COLUMN country TEXT`,
+        `ALTER TABLE applications ADD COLUMN city TEXT`,
+        `ALTER TABLE applications ADD COLUMN company TEXT`,
+        `ALTER TABLE applications ADD COLUMN job_title TEXT`,
+        `ALTER TABLE applications ADD COLUMN specialisation TEXT`,
+        `ALTER TABLE applications ADD COLUMN industry TEXT`,
+        `ALTER TABLE applications ADD COLUMN certifications TEXT DEFAULT '[]'`,
+        `ALTER TABLE applications ADD COLUMN working_groups TEXT DEFAULT '[]'`,
+        `ALTER TABLE members ADD COLUMN country TEXT`,
+        `ALTER TABLE members ADD COLUMN city TEXT`,
+        `ALTER TABLE members ADD COLUMN company TEXT`,
+        `ALTER TABLE members ADD COLUMN job_title TEXT`,
+        `ALTER TABLE members ADD COLUMN specialisation TEXT`,
+        `ALTER TABLE members ADD COLUMN industry TEXT`,
+        `ALTER TABLE members ADD COLUMN certifications TEXT DEFAULT '[]'`,
+        `ALTER TABLE members ADD COLUMN working_groups TEXT DEFAULT '[]'`
+    ];
+
+    for (const alterSql of alterStatements) {
+        try {
+            await client.execute(alterSql);
+        } catch (err) {
+            // Column likely already exists, ignore duplicate column error
+        }
+    }
 }
 
 async function initPostgresSchema() {

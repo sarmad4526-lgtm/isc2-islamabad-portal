@@ -67,7 +67,7 @@ router.post('/apply', async (req, res, next) => {
             cleanIsc2,
             fullName,
             email.trim().toLowerCase(),
-            industry || 'Not specified',
+            company || 'Not specified',
             jobTitle || 'Member',
             specialisation || 'Not specified',
             industry || 'Not specified',
