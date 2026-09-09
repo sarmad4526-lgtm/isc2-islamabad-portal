@@ -16,6 +16,7 @@ router.post('/apply', async (req, res, next) => {
             firstName,
             lastName,
             isc2Number,
+            company,
             jobTitle,
             specialisation,
             industry,
