@@ -1,5 +1,5 @@
 const app = require('../server/app');
-const { initDb, queryOne, execute } = require('../server/config/db');
+const { initDb, queryOne, execute, isTurso, isPostgres, isVercel } = require('../server/config/db');
 
 // Vercel serverless: initialize DB and ensure admin user on cold start
 let dbReady = null;
@@ -27,13 +27,18 @@ async function ensureAdminUser() {
 function ensureDb() {
     if (!dbReady) {
         dbReady = (async () => {
-            try {
-                await initDb();
-                await ensureAdminUser();
-                console.log('✓ Vercel: DB schema & admin user ready');
-            } catch (error) {
-                console.error('Database initialization on Vercel error:', error.message || error);
-                dbReady = null;
+            // On Vercel, only initialize DB if cloud DB (Turso/Postgres) is configured
+            if (!isVercel || isTurso || isPostgres) {
+                try {
+                    await initDb();
+                    await ensureAdminUser();
+                    console.log('✓ DB schema & admin user ready');
+                } catch (error) {
+                    console.error('Database initialization error:', error.message || error);
+                    dbReady = null;
+                }
+            } else {
+                console.warn('⚠️ Running on Vercel without TURSO_DATABASE_URL configured. Static routes will serve cleanly; database endpoints require Turso environment variables.');
             }
         })();
     }
