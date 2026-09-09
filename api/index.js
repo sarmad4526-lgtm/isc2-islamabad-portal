@@ -45,17 +45,11 @@ function ensureDb() {
     return dbReady;
 }
 
-const url = require('url');
-
 const handler = async (req, res) => {
     try {
         await ensureDb();
     } catch (e) {
         console.error('Handler ensureDb catch:', e.message || e);
-    }
-    const parsed = url.parse(req.url, true);
-    if (parsed.query && parsed.query.path) {
-        req.url = parsed.query.path;
     }
     return app(req, res);
 };

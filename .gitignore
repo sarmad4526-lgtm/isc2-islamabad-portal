@@ -1,5 +1,7 @@
 node_modules/
 .env
+.env.local
+.env.*.local
 *.db
 *.db-journal
 *.db-shm
@@ -7,6 +9,3 @@ node_modules/
 .DS_Store
 Thumbs.db
 .vercel
-
-.vercel
-.env*
