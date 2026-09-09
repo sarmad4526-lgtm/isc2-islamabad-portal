@@ -52,8 +52,9 @@ const handler = async (req, res) => {
     } catch (e) {
         console.error('Handler ensureDb catch:', e.message || e);
     }
-    if (req.headers['x-matched-path']) {
-        req.url = req.headers['x-matched-path'];
+    const targetUrl = req.headers['x-forwarded-path'] || req.headers['x-invoke-path'];
+    if (targetUrl) {
+        req.url = targetUrl;
     }
     return app(req, res);
 };
