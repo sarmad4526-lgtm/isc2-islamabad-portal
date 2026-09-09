@@ -12,7 +12,8 @@ const path = require('path');
 
 // ─── Detect environment ─────────────────────────────────────────────────
 const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
-const tursoUrl = process.env.TURSO_DATABASE_URL || process.env.TURSO_URL;
+const rawTursoUrl = process.env.TURSO_DATABASE_URL || process.env.TURSO_URL;
+const tursoUrl = rawTursoUrl ? rawTursoUrl.trim().replace(/^["']|["']$/g, '') : null;
 const isTurso = Boolean(tursoUrl);
 const pgUrl = !isTurso ? (process.env.POSTGRES_URL || process.env.DATABASE_URL) : null;
 const isPostgres = Boolean(pgUrl);
@@ -23,9 +24,11 @@ let tursoClient = null;
 function getTursoClient() {
     if (tursoClient) return tursoClient;
     const { createClient } = require('@libsql/client');
+    const rawAuthToken = process.env.TURSO_AUTH_TOKEN;
+    const authToken = rawAuthToken ? rawAuthToken.trim().replace(/^["']|["']$/g, '') : undefined;
     tursoClient = createClient({
         url: tursoUrl,
-        authToken: process.env.TURSO_AUTH_TOKEN || undefined
+        authToken: authToken
     });
     return tursoClient;
 }
