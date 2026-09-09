@@ -45,22 +45,17 @@ function ensureDb() {
     return dbReady;
 }
 
-// Wrap Express app in async handler
+const url = require('url');
+
 const handler = async (req, res) => {
     try {
         await ensureDb();
     } catch (e) {
         console.error('Handler ensureDb catch:', e.message || e);
     }
-    console.log('Incoming Vercel req.url:', req.url);
-    console.log('Vercel x-matched-path:', req.headers['x-matched-path']);
-    console.log('Vercel x-forwarded-path:', req.headers['x-forwarded-path']);
-    console.log('Vercel x-invoke-path:', req.headers['x-invoke-path']);
-    console.log('Vercel x-now-route-matches:', req.headers['x-now-route-matches']);
-
-    const targetUrl = req.headers['x-forwarded-path'] || req.headers['x-invoke-path'] || req.headers['x-matched-path'];
-    if (targetUrl && targetUrl !== '/api/index') {
-        req.url = targetUrl;
+    const parsed = url.parse(req.url, true);
+    if (parsed.query && parsed.query.path) {
+        req.url = parsed.query.path;
     }
     return app(req, res);
 };
