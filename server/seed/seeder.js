@@ -1,6 +1,14 @@
 require('dotenv').config();
 const bcrypt = require('bcryptjs');
-const { queryOne, execute, transaction, initDb, getMemberStatus } = require('../config/db');
+const { queryOne, execute, transaction, initDb, getMemberStatus, isTurso, isPostgres, isVercel } = require('../config/db');
+
+async function seedDatabase() {
+    if (isVercel && !isTurso && !isPostgres) {
+        console.log('⚠️ Skipping seedDatabase on Vercel: Cloud DB not configured yet.');
+        return;
+    }
+    await initDb();
+}
 
 const SEED_MEMBERS = [
     {
@@ -259,6 +267,10 @@ const SEED_REQUESTS = [
 ];
 
 async function seedDatabase() {
+    if (isVercel && !isTurso && !isPostgres) {
+        console.log('⚠️ Skipping seedDatabase on Vercel: Cloud DB not configured yet.');
+        return;
+    }
     await initDb();
 
     console.log('--- Seeding Database ---');
