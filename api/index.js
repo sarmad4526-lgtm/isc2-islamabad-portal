@@ -52,6 +52,9 @@ const handler = async (req, res) => {
     } catch (e) {
         console.error('Handler ensureDb catch:', e.message || e);
     }
+    if (req.headers['x-matched-path']) {
+        req.url = req.headers['x-matched-path'];
+    }
     return app(req, res);
 };
 
