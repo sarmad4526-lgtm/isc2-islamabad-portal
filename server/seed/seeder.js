@@ -1,3 +1,5 @@
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env.local') });
 require('dotenv').config();
 const bcrypt = require('bcryptjs');
 const { queryOne, execute, transaction, initDb, getMemberStatus, isTurso, isPostgres, isVercel } = require('../config/db');
@@ -285,77 +287,83 @@ async function seedDatabase() {
         console.log(`✓ Admin password updated: ${adminEmail}`);
     }
 
-    // 2. Seed Members and Multi-Term Histories
-    for (const m of SEED_MEMBERS) {
-        const certsJson = JSON.stringify(m.certifications || []);
-        const groupsJson = JSON.stringify(m.workingGroups || []);
+    // 2. Seed Members and Applications (Only if SEED_DEMO_DATA=true or explicit flag)
+    const shouldSeedDemo = process.env.SEED_DEMO_DATA === 'true' || (typeof options === 'object' && options.forceSeedDemo);
 
-        // Check if member already exists
-        const existing = await queryOne('SELECT id FROM members WHERE member_id = $1', [m.memberId]);
-        if (!existing) {
-            await execute(`
-                INSERT INTO members (
-                    member_id, name, email, chapter, role, company, job_title,
-                    specialisation, industry, certifications, working_groups,
-                    term_start_date, term_end_date
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-            `, [
-                m.memberId, m.name, m.email, m.chapter, m.role, m.company, m.jobTitle,
-                m.specialisation, m.industry, certsJson, groupsJson,
-                m.termStartDate, m.termEndDate
-            ]);
+    if (shouldSeedDemo) {
+        for (const m of SEED_MEMBERS) {
+            const certsJson = JSON.stringify(m.certifications || []);
+            const groupsJson = JSON.stringify(m.workingGroups || []);
 
-            // Seed user login for each member (default password: Password@123)
-            const memberPassHash = bcrypt.hashSync('Password@123', 10);
-            await execute(`
-                INSERT INTO users (email, isc2_number, password_hash, role)
-                VALUES ($1, $2, $3, 'MEMBER')
-                ON CONFLICT DO NOTHING
-            `, [m.email, m.memberId, memberPassHash]);
+            // Check if member already exists
+            const existing = await queryOne('SELECT id FROM members WHERE member_id = $1', [m.memberId]);
+            if (!existing) {
+                await execute(`
+                    INSERT INTO members (
+                        member_id, name, email, chapter, role, company, job_title,
+                        specialisation, industry, certifications, working_groups,
+                        term_start_date, term_end_date
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                `, [
+                    m.memberId, m.name, m.email, m.chapter, m.role, m.company, m.jobTitle,
+                    m.specialisation, m.industry, certsJson, groupsJson,
+                    m.termStartDate, m.termEndDate
+                ]);
 
-            // Seed historical terms
-            if (m.history && Array.isArray(m.history)) {
-                for (const h of m.history) {
-                    const existingHistory = await queryOne(
-                        'SELECT id FROM membership_history WHERE member_id = $1 AND period_number = $2',
-                        [m.memberId, h.period]
-                    );
-                    if (!existingHistory) {
-                        await execute(`
-                            INSERT INTO membership_history (member_id, period_number, start_date, end_date, status)
-                            VALUES ($1, $2, $3, $4, $5)
-                        `, [m.memberId, h.period, h.startDate, h.endDate, h.status]);
+                // Seed user login for each member (default password: Password@123)
+                const memberPassHash = bcrypt.hashSync('Password@123', 10);
+                await execute(`
+                    INSERT INTO users (email, isc2_number, password_hash, role)
+                    VALUES ($1, $2, $3, 'MEMBER')
+                    ON CONFLICT DO NOTHING
+                `, [m.email, m.memberId, memberPassHash]);
+
+                // Seed historical terms
+                if (m.history && Array.isArray(m.history)) {
+                    for (const h of m.history) {
+                        const existingHistory = await queryOne(
+                            'SELECT id FROM membership_history WHERE member_id = $1 AND period_number = $2',
+                            [m.memberId, h.period]
+                        );
+                        if (!existingHistory) {
+                            await execute(`
+                                INSERT INTO membership_history (member_id, period_number, start_date, end_date, status)
+                                VALUES ($1, $2, $3, $4, $5)
+                            `, [m.memberId, h.period, h.startDate, h.endDate, h.status]);
+                        }
                     }
                 }
             }
         }
-    }
-    console.log(`✓ Seeded ${SEED_MEMBERS.length} members with multi-term histories and credentials`);
+        console.log(`✓ Seeded ${SEED_MEMBERS.length} demo members with multi-term histories`);
 
-    // 3. Seed Pending Applications
-    for (const r of SEED_REQUESTS) {
-        const existing = await queryOne('SELECT id FROM applications WHERE request_id = $1', [r.requestId]);
-        if (!existing) {
-            await execute(`
-                INSERT INTO applications (
-                    request_id, isc2_number, name, email, company, job_title,
-                    specialisation, industry, certifications, working_groups, status, date
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-            `, [
-                r.requestId, r.isc2Number, r.name, r.email, r.company, r.jobTitle,
-                r.specialisation, r.industry,
-                JSON.stringify(r.certifications || []),
-                JSON.stringify(r.workingGroups || []),
-                r.status, r.date
-            ]);
+        for (const r of SEED_REQUESTS) {
+            const existing = await queryOne('SELECT id FROM applications WHERE request_id = $1', [r.requestId]);
+            if (!existing) {
+                await execute(`
+                    INSERT INTO applications (
+                        request_id, isc2_number, name, email, company, job_title,
+                        specialisation, industry, certifications, working_groups, status, date
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                `, [
+                    r.requestId, r.isc2Number, r.name, r.email, r.company, r.jobTitle,
+                    r.specialisation, r.industry,
+                    JSON.stringify(r.certifications || []),
+                    JSON.stringify(r.workingGroups || []),
+                    r.status, r.date
+                ]);
+            }
         }
+        console.log(`✓ Seeded ${SEED_REQUESTS.length} demo membership applications`);
+    } else {
+        console.log('ℹ️ Demo data seeding skipped (production clean mode). Set SEED_DEMO_DATA=true to include demo entries.');
     }
-    console.log(`✓ Seeded ${SEED_REQUESTS.length} pending membership applications`);
-    console.log('✓ Seeding complete!');
+    console.log('✓ Database initialization/seeding complete!');
 }
 
 if (require.main === module) {
-    seedDatabase().then(() => process.exit(0)).catch(err => {
+    const forceSeedDemo = process.argv.includes('--demo');
+    seedDatabase({ forceSeedDemo }).then(() => process.exit(0)).catch(err => {
         console.error('Seeding failed:', err);
         process.exit(1);
     });

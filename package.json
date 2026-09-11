@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "seed": "node server/seed/seeder.js"
+    "seed": "node server/seed/seeder.js --demo",
+    "db:clean": "node server/seed/clean.js",
+    "db:seed": "node server/seed/seeder.js --demo"
   },
   "keywords": [
     "isc2",
