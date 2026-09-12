@@ -68,18 +68,42 @@ app.get('/api/health', async (req, res) => {
     }
 });
 
-// Serve Static Frontend Assets (HTML, CSS, JS, Images)
 const publicDir = path.resolve(__dirname, '../public');
+const jwt = require('jsonwebtoken');
+const { JWT_SECRET } = require('./middleware/auth');
+
+// Protect Admin Dashboard Page Routes (Redirect to /login if unauthenticated or not ADMIN)
+app.get(['/admin', '/admin.html'], (req, res) => {
+    let token = req.cookies ? req.cookies.token : null;
+    if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+        token = req.headers.authorization.split(' ')[1];
+    }
+
+    if (!token) {
+        return res.redirect('/login');
+    }
+
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        if (!decoded || decoded.role !== 'ADMIN') {
+            return res.redirect('/login');
+        }
+        return res.sendFile(path.join(publicDir, 'admin.html'));
+    } catch (err) {
+        return res.redirect('/login');
+    }
+});
+
+// Serve Static Frontend Assets (HTML, CSS, JS, Images)
 app.use(express.static(publicDir));
 
 // Clean page routes
-app.get('/admin', (req, res) => res.sendFile(path.join(publicDir, 'admin.html')));
 app.get('/login', (req, res) => res.sendFile(path.join(publicDir, 'login.html')));
 app.get('/membership', (req, res) => res.sendFile(path.join(publicDir, 'membership.html')));
 app.get('/events', (req, res) => res.sendFile(path.join(publicDir, 'events.html')));
 app.get('/leadership', (req, res) => res.sendFile(path.join(publicDir, 'leadership.html')));
 
-// Fallback to index.html for root or SPA navigation
+// Fallback to index.html for root navigation
 app.get('*', (req, res) => {
     res.sendFile(path.join(publicDir, 'index.html'));
 });

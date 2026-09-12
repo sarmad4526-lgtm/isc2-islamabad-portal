@@ -19,14 +19,6 @@ async function authenticateToken(req, res, next) {
     }
 
     if (!token) {
-        // Development mode convenience: fallback to admin account for seamless local testing
-        if (process.env.NODE_ENV !== 'production') {
-            const devAdmin = await queryOne("SELECT id, email, isc2_number, role FROM users WHERE role = 'ADMIN' LIMIT 1");
-            if (devAdmin) {
-                req.user = devAdmin;
-                return next();
-            }
-        }
         return res.status(401).json({ success: false, message: 'Authentication required. Please sign in.' });
     }
 
@@ -35,26 +27,12 @@ async function authenticateToken(req, res, next) {
         const user = await queryOne('SELECT id, email, isc2_number, role FROM users WHERE id = $1', [decoded.id]);
 
         if (!user) {
-            if (process.env.NODE_ENV !== 'production') {
-                const devAdmin = await queryOne("SELECT id, email, isc2_number, role FROM users WHERE role = 'ADMIN' LIMIT 1");
-                if (devAdmin) {
-                    req.user = devAdmin;
-                    return next();
-                }
-            }
             return res.status(401).json({ success: false, message: 'User session invalid or user not found.' });
         }
 
         req.user = user;
         next();
     } catch (err) {
-        if (process.env.NODE_ENV !== 'production') {
-            const devAdmin = await queryOne("SELECT id, email, isc2_number, role FROM users WHERE role = 'ADMIN' LIMIT 1");
-            if (devAdmin) {
-                req.user = devAdmin;
-                return next();
-            }
-        }
         return res.status(403).json({ success: false, message: 'Session expired or invalid token.' });
     }
 }

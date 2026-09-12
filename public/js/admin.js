@@ -1,287 +1,93 @@
 /**
  * ISC2 Islamabad Chapter - Admin Portal Management System
- * Hybrid Engine: Live REST API + Resilient Offline Fallback
  */
 
 // ============================================
-// BUILT-IN SEED DATASETS (OFFLINE / FALLBACK)
+// AUTHENTICATION GUARD (IMMEDIATE PAGE LOAD CHECK)
 // ============================================
-const DEFAULT_MEMBERS = [
-    {
-        memberId: "000335888",
-        name: "Asim Husain",
-        email: "asim.h@isc2islamabad.org",
-        chapter: "Pakistan Islamabad Chapter",
-        role: "Member",
-        company: "National Cyber Security Hub",
-        jobTitle: "Lead Security Architect",
-        specialisation: "Secure System Architecture & Design",
-        industry: "Telecommunications, Technology, Internet & Electronics",
-        certifications: ["CISSP", "ISSAP"],
-        workingGroups: ["Cloud Security"],
-        termStartDate: "2026-08-19",
-        termEndDate: "2027-08-19",
-        status: "Active",
-        history: [
-            { period: 1, startDate: "2013-07-17", endDate: "2023-12-31", status: "Expired" },
-            { period: 2, startDate: "2026-08-19", endDate: "2027-08-19", status: "Active" }
-        ]
-    },
-    {
-        memberId: "000335889",
-        name: "Tanveer Ahmad",
-        email: "tanveer.a@isc2islamabad.org",
-        chapter: "Pakistan Islamabad Chapter",
-        role: "Member",
-        company: "Federal Tech Innovations",
-        jobTitle: "Governance & Risk Manager",
-        specialisation: "Cyber Security Governance & Risk Management",
-        industry: "Government",
-        certifications: ["CGRC", "CISSP"],
-        workingGroups: ["DevSecOps"],
-        termStartDate: "2017-02-11",
-        termEndDate: "2024-02-10",
-        status: "Inactive",
-        history: [
-            { period: 1, startDate: "2017-02-11", endDate: "2024-02-10", status: "Expired" }
-        ]
-    },
-    {
-        memberId: "000335890",
-        name: "Hamid Ali",
-        email: "hamid.a@isc2islamabad.org",
-        chapter: "Pakistan Islamabad Chapter",
-        role: "Member",
-        company: "Nexus Defense Systems",
-        jobTitle: "SOC Analyst",
-        specialisation: "Network Monitoring and Intrusion Detection",
-        industry: "Airlines & Aerospace (including Defense)",
-        certifications: ["SSCP"],
-        workingGroups: ["Cloud Security"],
-        termStartDate: "2022-10-27",
-        termEndDate: "2024-10-27",
-        status: "Inactive",
-        history: [
-            { period: 1, startDate: "2022-10-27", endDate: "2024-10-27", status: "Expired" }
-        ]
-    },
-    {
-        memberId: "000335891",
-        name: "Jawwad Shamsi",
-        email: "jawwad.s@isc2islamabad.org",
-        chapter: "Pakistan Islamabad Chapter",
-        role: "Member",
-        company: "FAST-NUCES Islamabad",
-        jobTitle: "Professor & Cyber Security Advisor",
-        specialisation: "Secure System Development",
-        industry: "Education",
-        certifications: ["CISSP", "CSSLP"],
-        workingGroups: ["DevSecOps"],
-        termStartDate: "2025-09-23",
-        termEndDate: "2026-09-22",
-        status: "Active",
-        history: [
-            { period: 1, startDate: "2025-09-23", endDate: "2026-09-22", status: "Active" }
-        ]
-    },
-    {
-        memberId: "000335892",
-        name: "Muhammad Irfan Khokhar",
-        email: "irfan.k@isc2islamabad.org",
-        chapter: "Pakistan Islamabad Chapter",
-        role: "Member",
-        company: "Global Digital Trust",
-        jobTitle: "Principal Security Consultant",
-        specialisation: "Cyber Threat Intelligence",
-        industry: "Finance & Financial Services",
-        certifications: ["CISSP", "ISSMP"],
-        workingGroups: ["Cloud Security", "DevSecOps"],
-        termStartDate: "2025-09-18",
-        termEndDate: "2026-09-17",
-        status: "Active",
-        history: [
-            { period: 1, startDate: "2025-09-18", endDate: "2026-09-17", status: "Active" }
-        ]
-    },
-    {
-        memberId: "000335893",
-        name: "Hassan Jalil Hadi",
-        email: "hassan.h@isc2islamabad.org",
-        chapter: "Pakistan Islamabad Chapter",
-        role: "Member",
-        company: "TechSecure PK",
-        jobTitle: "Cloud Architect",
-        specialisation: "Secure System Architecture & Design",
-        industry: "Telecommunications, Technology, Internet & Electronics",
-        certifications: ["CCSP"],
-        workingGroups: ["Cloud Security"],
-        termStartDate: "2026-01-29",
-        termEndDate: "2027-01-29",
-        status: "Active",
-        history: [
-            { period: 1, startDate: "2026-01-29", endDate: "2027-01-29", status: "Active" }
-        ]
-    },
-    {
-        memberId: "000335894",
-        name: "Mr Ali",
-        email: "ali.m@isc2islamabad.org",
-        chapter: "Pakistan Islamabad Chapter",
-        role: "Member",
-        company: "Islamabad Telecom Group",
-        jobTitle: "Data Protection Officer",
-        specialisation: "Data Protection & Privacy",
-        industry: "Telecommunications, Technology, Internet & Electronics",
-        certifications: ["CGRC"],
-        workingGroups: ["Cloud Security"],
-        termStartDate: "2018-11-20",
-        termEndDate: "2023-11-19",
-        status: "Inactive",
-        history: [
-            { period: 1, startDate: "2018-11-20", endDate: "2023-11-19", status: "Expired" }
-        ]
-    },
-    {
-        memberId: "000335896",
-        name: "Touseef Gul",
-        email: "touseef.g@isc2islamabad.org",
-        chapter: "Pakistan Islamabad Chapter",
-        role: "Member",
-        company: "Islamabad Cyber Works",
-        jobTitle: "Senior Incident Responder",
-        specialisation: "Incident Response",
-        industry: "Healthcare & Pharmaceuticals",
-        certifications: ["CISSP"],
-        workingGroups: ["DevSecOps"],
-        termStartDate: "2026-03-09",
-        termEndDate: "2027-03-09",
-        status: "Active",
-        history: [
-            { period: 1, startDate: "2026-03-09", endDate: "2027-03-09", status: "Active" }
-        ]
-    },
-    {
-        memberId: "000335897",
-        name: "Muhammad Huzaifa Rashid",
-        email: "huzaifa.r@isc2islamabad.org",
-        chapter: "Pakistan Islamabad Chapter",
-        role: "Member",
-        company: "GovSec Solutions",
-        jobTitle: "Cryptographic Engineer",
-        specialisation: "Cryptography & Communications Security",
-        industry: "Government",
-        certifications: ["CC"],
-        workingGroups: ["DevSecOps"],
-        termStartDate: "2026-08-19",
-        termEndDate: "2027-08-19",
-        status: "Active",
-        history: [
-            { period: 1, startDate: "2021-11-04", endDate: "2023-11-04", status: "Expired" },
-            { period: 2, startDate: "2026-08-19", endDate: "2027-08-19", status: "Active" }
-        ]
-    },
-    {
-        memberId: "000335898",
-        name: "Waseem Sajjad",
-        email: "waseem.s@isc2islamabad.org",
-        chapter: "Pakistan Islamabad Chapter",
-        role: "Member",
-        company: "Pakistan Fintech Security",
-        jobTitle: "Lead Auditor",
-        specialisation: "Cyber Security Audit and Assurance",
-        industry: "Finance & Financial Services",
-        certifications: ["CISSP", "CGRC"],
-        workingGroups: ["Cloud Security"],
-        termStartDate: "2025-10-22",
-        termEndDate: "2026-10-21",
-        status: "Active",
-        history: [
-            { period: 1, startDate: "2025-10-22", endDate: "2026-10-21", status: "Active" }
-        ]
-    }
-];
+(function checkAdminAuth() {
+    // Purge legacy persistent local storage tokens so direct URL navigation forces login
+    localStorage.removeItem('isc2_token');
+    localStorage.removeItem('isc2_user');
 
-const DEFAULT_REQUESTS = [
-    {
-        requestId: "REQ-2025-001",
-        isc2Number: "000452101",
-        name: "Ahmed Khan",
-        email: "ahmed.k@example.com",
-        company: "National Bank of Pakistan",
-        jobTitle: "Senior Security Analyst",
-        certifications: ["CISSP"],
-        specialisation: "Cyber Security Governance & Risk Management",
-        industry: "Finance & Financial Services",
-        workingGroups: ["DevSecOps"],
-        date: "2025-08-10",
-        status: "Pending"
-    },
-    {
-        requestId: "REQ-2025-002",
-        isc2Number: "000452102",
-        name: "Fatima Ali",
-        email: "fatima.a@example.com",
-        company: "PTCL",
-        jobTitle: "Cloud Security Engineer",
-        certifications: ["CCSP"],
-        specialisation: "Cloud Security",
-        industry: "Telecommunications, Technology, Internet & Electronics",
-        workingGroups: ["Cloud Security"],
-        date: "2025-08-09",
-        status: "Pending"
-    },
-    {
-        requestId: "REQ-2025-003",
-        isc2Number: "000452103",
-        name: "Usman Tariq",
-        email: "usman.t@example.com",
-        company: "Systems Limited",
-        jobTitle: "Security Consultant",
-        certifications: ["CC"],
-        specialisation: "Cyber Security Generalists",
-        industry: "Telecommunications, Technology, Internet & Electronics",
-        workingGroups: ["Cloud Security"],
-        date: "2025-08-08",
-        status: "Pending"
-    },
-    {
-        requestId: "REQ-2025-004",
-        isc2Number: "000452104",
-        name: "Sana Malik",
-        email: "sana.m@example.com",
-        company: "Jazz",
-        jobTitle: "Network Security Specialist",
-        certifications: ["SSCP"],
-        specialisation: "Network Monitoring and Intrusion Detection",
-        industry: "Telecommunications, Technology, Internet & Electronics",
-        workingGroups: ["DevSecOps"],
-        date: "2025-08-07",
-        status: "Pending"
-    },
-    {
-        requestId: "REQ-2025-005",
-        isc2Number: "000452105",
-        name: "Bilal Ahmed",
-        email: "bilal.a@example.com",
-        company: "Government of Pakistan",
-        jobTitle: "Information Security Officer",
-        certifications: ["CISSP", "CISM"],
-        specialisation: "Cyber Security Strategy and Leadership",
-        industry: "Government",
-        workingGroups: ["Cloud Security", "DevSecOps"],
-        date: "2025-08-06",
-        status: "Pending"
+    const token = sessionStorage.getItem('isc2_token');
+    const userStr = sessionStorage.getItem('isc2_user');
+    if (!token || !userStr) {
+        sessionStorage.removeItem('isc2_token');
+        sessionStorage.removeItem('isc2_user');
+        window.location.href = 'login.html';
+        return;
     }
-];
+    try {
+        const user = JSON.parse(userStr);
+        if (!user || user.role !== 'ADMIN') {
+            sessionStorage.removeItem('isc2_token');
+            sessionStorage.removeItem('isc2_user');
+            window.location.href = 'login.html';
+            return;
+        }
+    } catch (e) {
+        sessionStorage.removeItem('isc2_token');
+        sessionStorage.removeItem('isc2_user');
+        window.location.href = 'login.html';
+        return;
+    }
+
+    // Verify token validity with backend server
+    const checkApiBase = window.location.protocol === 'file:' ? 'http://localhost:5000' : '';
+    fetch(`${checkApiBase}/api/auth/me`, {
+        headers: {
+            'Accept': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        credentials: window.location.protocol !== 'file:' ? 'include' : 'same-origin'
+    }).then(res => {
+        if (!res.ok) {
+            sessionStorage.removeItem('isc2_token');
+            sessionStorage.removeItem('isc2_user');
+            window.location.href = 'login.html';
+            return;
+        }
+        return res.json();
+    }).then(data => {
+        if (data && (!data.success || !data.user || data.user.role !== 'ADMIN')) {
+            sessionStorage.removeItem('isc2_token');
+            sessionStorage.removeItem('isc2_user');
+            window.location.href = 'login.html';
+        }
+    }).catch(err => {
+        if (window.location.protocol !== 'file:') {
+            sessionStorage.removeItem('isc2_token');
+            sessionStorage.removeItem('isc2_user');
+            window.location.href = 'login.html';
+        }
+    });
+})();
+
+// Clean legacy dummy cache from local storage if present
+try {
+    const savedActive = localStorage.getItem('isc2_active_members');
+    const savedInactive = localStorage.getItem('isc2_inactive_members');
+    const savedRequests = localStorage.getItem('isc2_pending_requests');
+    if (savedActive && savedActive.includes('000335888')) localStorage.removeItem('isc2_active_members');
+    if (savedInactive && savedInactive.includes('000335889')) localStorage.removeItem('isc2_inactive_members');
+    if (savedRequests && savedRequests.includes('REQ-2025-001')) localStorage.removeItem('isc2_pending_requests');
+} catch (e) {}
+
+// ============================================
+// DEFAULT DATASETS (EMPTY FOR CLEAN PRODUCTION)
+// ============================================
+const DEFAULT_MEMBERS = [];
+const DEFAULT_REQUESTS = [];
 
 // In-memory & Persistent application state
 const savedActive = localStorage.getItem('isc2_active_members');
 const savedInactive = localStorage.getItem('isc2_inactive_members');
 const savedRequests = localStorage.getItem('isc2_pending_requests');
 
-let currentActiveMembers = savedActive ? JSON.parse(savedActive) : JSON.parse(JSON.stringify(DEFAULT_MEMBERS.filter(m => m.status === 'Active')));
-let currentInactiveMembers = savedInactive ? JSON.parse(savedInactive) : JSON.parse(JSON.stringify(DEFAULT_MEMBERS.filter(m => m.status === 'Inactive')));
-let currentRequests = savedRequests ? JSON.parse(savedRequests) : JSON.parse(JSON.stringify(DEFAULT_REQUESTS));
+let currentActiveMembers = savedActive ? JSON.parse(savedActive) : [];
+let currentInactiveMembers = savedInactive ? JSON.parse(savedInactive) : [];
+let currentRequests = savedRequests ? JSON.parse(savedRequests) : [];
 let confirmCallback = null;
 let isServerOnline = false;
 
@@ -320,7 +126,7 @@ const API_BASE = window.location.protocol === 'file:' ? 'http://localhost:5000' 
 
 async function authFetch(url, options = {}) {
     const fullUrl = url.startsWith('http') ? url : `${API_BASE}${url}`;
-    const token = localStorage.getItem('isc2_token');
+    const token = sessionStorage.getItem('isc2_token') || localStorage.getItem('isc2_token');
     const headers = {
         'Accept': 'application/json',
         ...(options.headers || {})
@@ -343,7 +149,17 @@ async function authFetch(url, options = {}) {
         fetchOptions.credentials = 'include';
     }
 
-    return await fetch(fullUrl, fetchOptions);
+    const response = await fetch(fullUrl, fetchOptions);
+
+    // Auto-redirect to login on 401 Unauthorized or 403 Forbidden
+    if (response.status === 401 || response.status === 403) {
+        sessionStorage.clear();
+        localStorage.removeItem('isc2_token');
+        localStorage.removeItem('isc2_user');
+        window.location.href = 'login.html';
+    }
+
+    return response;
 }
 
 // ============================================
@@ -506,6 +322,9 @@ function initNavigationEvents() {
             } catch (err) {}
             localStorage.removeItem('isc2_token');
             localStorage.removeItem('isc2_user');
+            localStorage.removeItem('isc2_active_members');
+            localStorage.removeItem('isc2_inactive_members');
+            localStorage.removeItem('isc2_pending_requests');
             window.location.href = 'login.html';
         });
     }
@@ -516,8 +335,34 @@ function initNavigationEvents() {
 // ============================================
 async function syncWithServer() {
     try {
+        // Validate active admin session with backend
+        const meRes = await authFetch('/api/auth/me');
+        if (!meRes.ok) {
+            if (meRes.status === 401 || meRes.status === 403) {
+                localStorage.removeItem('isc2_token');
+                localStorage.removeItem('isc2_user');
+                window.location.href = 'login.html';
+                return;
+            }
+        } else {
+            const meData = await meRes.json();
+            if (!meData.success || !meData.user || meData.user.role !== 'ADMIN') {
+                localStorage.removeItem('isc2_token');
+                localStorage.removeItem('isc2_user');
+                window.location.href = 'login.html';
+                return;
+            }
+        }
+
         const statsRes = await authFetch('/api/admin/stats');
-        if (statsRes.ok) {
+        if (!statsRes.ok) {
+            if (statsRes.status === 401 || statsRes.status === 403) {
+                localStorage.removeItem('isc2_token');
+                localStorage.removeItem('isc2_user');
+                window.location.href = 'login.html';
+                return;
+            }
+        } else {
             const statsData = await statsRes.json();
             if (statsData.success && statsData.stats) {
                 isServerOnline = true;
@@ -560,9 +405,8 @@ async function syncWithServer() {
                 renderRequestsDOM();
                 renderEmailRecipients();
             }
-        }
     } catch (e) {
-        console.info('Server sync unavailable, operating with local data store.');
+        console.info('Server sync offline or unavailable.');
     }
 }
 

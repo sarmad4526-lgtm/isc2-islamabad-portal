@@ -40,44 +40,16 @@ router.get('/', authenticateToken, requireAdmin, async (req, res, next) => {
 
 /**
  * ALL /api/admin/stats/clean-db or /api/stats/clean-db
- * Wipes all dummy data from members, applications, history, email_logs
+ * Admin-only database cleanup utility
  */
-router.all('/clean-db', async (req, res, next) => {
+router.all('/clean-db', authenticateToken, requireAdmin, async (req, res, next) => {
     try {
-        const secret = req.query.secret || (req.body && req.body.secret);
-        let isAuthorized = false;
-
-        if (secret && (secret === process.env.ADMIN_PASSWORD || secret === 'Admin@ISC2!2026')) {
-            isAuthorized = true;
-        } else {
-            const token = req.cookies.token || (req.headers.authorization && req.headers.authorization.split(' ')[1]);
-            if (token) {
-                try {
-                    const jwt = require('jsonwebtoken');
-                    const { JWT_SECRET } = require('../middleware/auth');
-                    const decoded = jwt.verify(token, JWT_SECRET);
-                    if (decoded && decoded.role === 'ADMIN') {
-                        isAuthorized = true;
-                    }
-                } catch (e) {
-                    // Token invalid
-                }
-            }
-        }
-
-        if (!isAuthorized) {
-            return res.status(401).json({
-                success: false,
-                message: 'Unauthorized. Provide ?secret=Admin@ISC2!2026 or sign in as Admin.'
-            });
-        }
-
         const { cleanDatabase } = require('../seed/clean');
         await cleanDatabase();
 
         return res.json({
             success: true,
-            message: '🎉 Production Database successfully cleaned! Total members: 0, Total applications: 0.'
+            message: 'Database clean completed.'
         });
     } catch (err) {
         next(err);

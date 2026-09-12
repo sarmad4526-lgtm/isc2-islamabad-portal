@@ -163,8 +163,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
 
                 if (data.success) {
-                    localStorage.setItem('isc2_token', data.token);
-                    localStorage.setItem('isc2_user', JSON.stringify(data.user));
+                    // Purge old persistent local storage tokens
+                    localStorage.removeItem('isc2_token');
+                    localStorage.removeItem('isc2_user');
+
+                    // Store session tokens in sessionStorage for active tab session
+                    sessionStorage.setItem('isc2_token', data.token);
+                    sessionStorage.setItem('isc2_user', JSON.stringify(data.user));
 
                     if (data.user && data.user.role === 'ADMIN') {
                         window.location.href = 'admin.html';
