@@ -261,7 +261,7 @@ const SEED_REQUESTS = [
     }
 ];
 
-async function seedDatabase() {
+async function seedDatabase(options = {}) {
     if (isVercel && !isTurso && !isPostgres) {
         console.log('⚠️ Skipping seedDatabase on Vercel: Cloud DB not configured yet.');
         return;
