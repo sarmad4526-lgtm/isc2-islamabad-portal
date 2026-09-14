@@ -409,6 +409,7 @@ async function syncWithServer() {
                 renderRequestsDOM();
                 renderEmailRecipients();
             }
+        }
     } catch (e) {
         console.info('Server sync offline or unavailable.');
     }
