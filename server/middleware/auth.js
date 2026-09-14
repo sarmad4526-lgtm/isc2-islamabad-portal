@@ -9,13 +9,25 @@ const JWT_SECRET = process.env.JWT_SECRET || 'isc2_islamabad_super_secret_jwt_ke
 async function authenticateToken(req, res, next) {
     let token = null;
 
-    // Check HTTP-only cookie first
-    if (req.cookies && req.cookies.token) {
-        token = req.cookies.token;
-    } 
-    // Fallback to Bearer token in header
-    else if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
-        token = req.headers.authorization.split(' ')[1];
+    // 1. Prioritize Authorization header (handles all case variations)
+    const authHeader = req.headers.authorization || req.headers.Authorization || req.headers['authorization'];
+    if (authHeader && typeof authHeader === 'string') {
+        const trimmed = authHeader.trim();
+        if (/^Bearer\s+/i.test(trimmed)) {
+            token = trimmed.replace(/^Bearer\s+/i, '').trim();
+        } else {
+            token = trimmed;
+        }
+    }
+
+    // 2. Fallback to HTTP cookie if no valid header token present
+    if (!token && req.cookies && req.cookies.token && req.cookies.token !== 'null' && req.cookies.token !== 'undefined' && req.cookies.token.trim() !== '') {
+        token = req.cookies.token.trim();
+    }
+
+    // 3. Fallback to query parameter
+    if (!token && req.query && req.query.token) {
+        token = String(req.query.token).trim();
     }
 
     if (!token) {
