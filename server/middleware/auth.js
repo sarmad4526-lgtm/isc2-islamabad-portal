@@ -31,7 +31,12 @@ async function authenticateToken(req, res, next) {
     }
 
     if (!token) {
-        return res.status(401).json({ success: false, message: 'Authentication required. Please sign in.' });
+        const headerKeys = Object.keys(req.headers || {}).join(', ');
+        return res.status(401).json({ 
+            success: false, 
+            message: 'Authentication required. Please sign in.',
+            debug: { receivedHeaders: headerKeys, hasAuthHeader: Boolean(authHeader) }
+        });
     }
 
     try {
@@ -39,13 +44,21 @@ async function authenticateToken(req, res, next) {
         const user = await queryOne('SELECT id, email, isc2_number, role FROM users WHERE id = $1', [decoded.id]);
 
         if (!user) {
-            return res.status(401).json({ success: false, message: 'User session invalid or user not found.' });
+            return res.status(401).json({ 
+                success: false, 
+                message: 'User session invalid or user not found.',
+                debug: { decodedId: decoded.id }
+            });
         }
 
         req.user = user;
         next();
     } catch (err) {
-        return res.status(403).json({ success: false, message: 'Session expired or invalid token.' });
+        return res.status(403).json({ 
+            success: false, 
+            message: 'Session expired or invalid token.',
+            debug: { error: err.message }
+        });
     }
 }
 
