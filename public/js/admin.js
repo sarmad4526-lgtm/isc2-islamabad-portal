@@ -38,7 +38,9 @@
     fetch(`${checkApiBase}/api/auth/me`, {
         headers: {
             'Accept': 'application/json',
-            'Authorization': `Bearer ${token}`
+            'Authorization': `Bearer ${token}`,
+            'X-Access-Token': token,
+            'X-Authorization': `Bearer ${token}`
         },
         credentials: window.location.protocol !== 'file:' ? 'include' : 'same-origin'
     }).then(res => {
@@ -134,6 +136,8 @@ async function authFetch(url, options = {}) {
 
     if (token) {
         headers['Authorization'] = `Bearer ${token}`;
+        headers['X-Access-Token'] = token;
+        headers['X-Authorization'] = `Bearer ${token}`;
     }
 
     if (options.body && typeof options.body === 'string' && !headers['Content-Type']) {

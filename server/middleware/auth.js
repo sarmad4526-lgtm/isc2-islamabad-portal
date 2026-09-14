@@ -9,23 +9,28 @@ const JWT_SECRET = process.env.JWT_SECRET || 'isc2_islamabad_super_secret_jwt_ke
 async function authenticateToken(req, res, next) {
     let token = null;
 
-    // 1. Prioritize Authorization header (handles all case variations)
-    const authHeader = req.headers.authorization || req.headers.Authorization || req.headers['authorization'];
-    if (authHeader && typeof authHeader === 'string') {
-        const trimmed = authHeader.trim();
-        if (/^Bearer\s+/i.test(trimmed)) {
-            token = trimmed.replace(/^Bearer\s+/i, '').trim();
-        } else {
-            token = trimmed;
+    // 1. Check custom headers first (bypasses Vercel edge proxy header stripping)
+    const customHeader = req.headers['x-access-token'] || req.headers['x-authorization'] || req.headers['X-Access-Token'] || req.headers['X-Authorization'];
+    if (customHeader && typeof customHeader === 'string') {
+        const trimmed = customHeader.trim();
+        token = /^Bearer\s+/i.test(trimmed) ? trimmed.replace(/^Bearer\s+/i, '').trim() : trimmed;
+    }
+
+    // 2. Standard Authorization header check
+    if (!token) {
+        const authHeader = req.headers.authorization || req.headers.Authorization || req.headers['authorization'];
+        if (authHeader && typeof authHeader === 'string') {
+            const trimmed = authHeader.trim();
+            token = /^Bearer\s+/i.test(trimmed) ? trimmed.replace(/^Bearer\s+/i, '').trim() : trimmed;
         }
     }
 
-    // 2. Fallback to HTTP cookie if no valid header token present
+    // 3. Fallback to HTTP cookie
     if (!token && req.cookies && req.cookies.token && req.cookies.token !== 'null' && req.cookies.token !== 'undefined' && req.cookies.token.trim() !== '') {
         token = req.cookies.token.trim();
     }
 
-    // 3. Fallback to query parameter
+    // 4. Fallback to query parameter
     if (!token && req.query && req.query.token) {
         token = String(req.query.token).trim();
     }
